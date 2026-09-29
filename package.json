@@ -1,0 +1,36 @@
+{
+  "name": "dremu-icondo-reservation-plugin",
+  "private": true,
+  "type": "module",
+  "description": "A DrEmu plugin that books facility courts in the iCondo app. The directory is a working directory (sources, tests, tools, build configuration); `npm run build` writes the package DrEmu loads to dist/.",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "node tools/clean-output.mjs && vite build --mode panel && node tools/build-dist.mjs",
+    "pretest": "npm run build",
+    "test": "dremu-plugin-devkit test"
+  },
+  "devDependencies": {
+    "@dremu/plugin-devkit": "file:../DrEmu/instruments/plugin-devkit",
+    "@vitejs/plugin-vue": "6.0.8",
+    "jsdom": "29.1.1",
+    "vite": "8.3.0",
+    "vue": "3.5.42"
+  },
+  "dremu": {
+    "package": "dist",
+    "imports": [
+      "./tests/register-vue.mjs"
+    ],
+    "suites": {
+      "unit": {
+        "files": [
+          "tests/*.test.js"
+        ],
+        "engine": "node",
+        "documents": "jsdom"
+      }
+    }
+  }
+}

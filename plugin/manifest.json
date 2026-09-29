@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "me.kael.icondo-reservation",
+  "name": "iCondo Reservation",
+  "version": "0.1.0",
+  "control": "control.js",
+  "panel": "panel/index.html",
+  "screen": {
+    "portrait_width": 720,
+    "portrait_height": 1280,
+    "orientation": 0
+  },
+  "storage": {
+    "quota_bytes": 65536
+  },
+  "grant": {
+    "capabilities": [
+      "device.storage"
+    ]
+  }
+}
