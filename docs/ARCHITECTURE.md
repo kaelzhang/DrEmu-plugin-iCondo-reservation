@@ -6,7 +6,7 @@
 | --- | --- |
 | `plugin/manifest.json` | DrEmu manifest；capability 只列实际调用的（当前仅 `device.storage`），加入点击/截图/识别时再加 `device.input` / `device.capture` / `device.recognize` |
 | `plugin/control.js` | 控制脚本：运行生命周期、面板 intent、topic 发布 |
-| `plugin/core/` | 控制脚本与面板共用的纯逻辑（`settings.js` 校验与规范化、`logger.js` 环形日志） |
+| `plugin/core/` | 控制脚本与面板共用的纯逻辑（`settings.js` 校验与规范化、`logger.js` 环形日志、`icondo.js` 目标 App 的常量） |
 | `plugin/shared/protocol.js` | intent 与 topic 名称，两端唯一来源 |
 | `plugin/panel/src/` | Vue 面板：`store.js`、`bridge.js`（`dremuPanel` 请求/事件桥）、组件、`panel.css` |
 | `tools/` | `clean-output.mjs` 清空 `dist/`，`build-dist.mjs` 拷贝运行时文件并写 `version.js` |
@@ -17,7 +17,7 @@
 | intent | 回复 |
 | --- | --- |
 | `icondo.state.read` | `{ version, status, settings, log: { lines, keep } }`——面板打开时读一次 |
-| `icondo.start` / `icondo.stop` | `status`；重复开始 `refused already_running`，未运行时停止 `refused not_running` |
+| `icondo.start` / `icondo.stop` | `status`；重复开始 `refused already_running`，前台不是 `com.icondo` 时开始 `refused icondo_not_in_front`，未运行时停止 `refused not_running` |
 | `icondo.settings.set` `{ settings }` | 规范化后的 settings；不合法为 `invalid_payload bad_settings`（线上拼写为 `invalid-payload`） |
 | `icondo.log.clear` | `{}`，并在 `icondo.log` 上发布 `{ lines: [], keep }` |
 

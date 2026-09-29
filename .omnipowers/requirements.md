@@ -9,3 +9,8 @@
 ## This work
 - [x] R4 — 「先初始化当前项目」 (stated 2026-09-29; verify by: `npm run build` 产出只含 manifest 所列文件的 dist/，`npm test` 通过)
   - evidence: `npm run build` → dist/ 仅含 manifest、control.js、core/、shared/protocol.js、version.js、panel/；`npm test` → pass 7 fail 0 (2026-09-29)
+- [x] R5 — 「1 是的」（设备分辨率是竖屏 720 × 1280） (stated 2026-09-29; verify by: manifest `screen` 为 720 × 1280、orientation 0，docs 移出待定)
+  - evidence: plugin/manifest.json screen 720×1280/0 未变；docs/REQUIREMENTS.md 待定已删该项
+- [x] R6 — 「2 com.icondo」（iCondo 的 Android 包名） (stated 2026-09-29; verify by: 包名写入代码与 devkit 配置，docs 移出待定)
+  - evidence: plugin/core/icondo.js、control.js 开始前校验前台、package.json dremu.device.application；测试「a run starts only while iCondo is in front」通过
+- R7 — 「其他问题我后续再跟你说」 (stated 2026-09-29) — 待定 3–5 保持待定，不自行假设

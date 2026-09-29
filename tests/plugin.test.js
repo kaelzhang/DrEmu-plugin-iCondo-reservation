@@ -63,3 +63,14 @@ test("a run starts, reports that the flow is undefined and stops by itself", asy
   assert.equal(stop.outcome, "refused");
   assert.equal(stop.reason, "not_running");
 });
+
+test("a run starts only while iCondo is in front", async (t) => {
+  devkit.device.setApplication("com.android.launcher");
+  await running(t);
+  const refused = await devkit.panel.send("icondo.start", {});
+  assert.equal(refused.outcome, "refused", JSON.stringify(refused));
+  assert.equal(refused.reason, "icondo_not_in_front");
+  devkit.device.setApplication("com.icondo");
+  const started = await devkit.panel.send("icondo.start", {});
+  assert.equal(started.outcome, "accepted", JSON.stringify(started));
+});

@@ -20,6 +20,9 @@
   },
   "dremu": {
     "package": "dist",
+    "device": {
+      "application": "com.icondo"
+    },
     "imports": [
       "./tests/register-vue.mjs"
     ],

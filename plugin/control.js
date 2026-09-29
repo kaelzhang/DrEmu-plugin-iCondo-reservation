@@ -6,6 +6,7 @@
 // log line never re-sends the status and vice versa. `version.js` is
 // generated into dist/ by tools/build-dist.mjs from the manifest's version.
 import VERSION from "./version.js";
+import { ICONDO_PACKAGE } from "./core/icondo.js";
 import { createLogger } from "./core/logger.js";
 import { checkSettings, normalizeSettings } from "./core/settings.js";
 import { INTENTS, TOPICS } from "./shared/protocol.js";
@@ -103,6 +104,10 @@ export const panel = {
       payloadSchema: OBJECT,
       async handle() {
         if (plugin.run) return { outcome: "refused", reason: "already_running", message: "A reservation run is already going." };
+        const front = (await dremu.device.currentApplication())?.packageId ?? null;
+        if (front !== ICONDO_PACKAGE) {
+          return { outcome: "refused", reason: "icondo_not_in_front", message: `Open iCondo (${ICONDO_PACKAGE}) first; ${front ?? "nothing"} is in front.` };
+        }
         startRun();
         return accepted(status());
       },
