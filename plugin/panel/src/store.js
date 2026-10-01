@@ -1,20 +1,22 @@
-// The panel's store (docs/ARCHITECTURE.md §Panel rendering), provided to
-// every component (`usePanel()`).
+// The panel's store (docs/ARCHITECTURE.md §面板渲染), provided to every
+// component (`usePanel()`).
 //
 // Rendering cost is the point of its shape. Every slice is its own ref, and a
 // component reads only the slices it draws, so a change re-renders that
 // component alone — never the whole panel:
 //
-// - `status`, `notice`, `busy`: small values replaced whole (shallowRef).
+// - `job`, `notice`, `busy`, `version`, `today`: small values replaced whole
+//   (shallowRef). `today` is re-read once a minute, so the day choices move
+//   on at midnight.
 // - `log`: an array of frozen lines held in a shallowRef. A published line is
 //   pushed in place and `triggerRef` announces it, so Vue never makes 500
 //   line objects deeply reactive and the log view patches one new row.
-// - `settings`: owned by the panel. The form binds to it with v-model; a
-//   watcher saves the whole object (icondo.settings.set) a moment after the
-//   last change. It is loaded from the control script only when the panel
-//   opens, so nothing the person just typed can jump back.
+// - `draft`: the task form, owned by the panel. A watcher saves it
+//   (icondo.draft.set) a moment after the last change; it is loaded from the
+//   control script only when the panel opens.
 import { inject, reactive, readonly, shallowReadonly, shallowRef, triggerRef, watch } from "vue";
-import { normalizeSettings } from "../../core/settings.js";
+import { dateOf } from "../../core/calendar.js";
+import { normalizeDraft } from "../../core/task.js";
 import { INTENTS, TOPICS } from "../../shared/protocol.js";
 
 export const PANEL = Symbol("icondo.panel");
@@ -25,14 +27,20 @@ export function usePanel() {
 
 const noticeOf = (reply) => (reply.outcome === "accepted" ? null : Object.freeze({ outcome: reply.outcome, reason: reply.reason, message: reply.message }));
 
-export function createPanelStore(bridge, { saveDelayMs = 300 } = {}) {
+export function createPanelStore(bridge, { saveDelayMs = 300, now = Date.now, tickMs = 60_000 } = {}) {
   const version = shallowRef(null);
-  const status = shallowRef(null);
+  const today = shallowRef(dateOf(now()));
+  const job = shallowRef(null);
   const notice = shallowRef(null);
-  const busy = shallowRef(false); // start / stop only
+  const busy = shallowRef(false);
   const log = shallowRef([]);
   let keep = 500;
-  const settings = reactive(normalizeSettings());
+  const draft = reactive(normalizeDraft());
+
+  const clock = setInterval(() => {
+    const date = dateOf(now());
+    if (date !== today.value) today.value = date;
+  }, tickMs);
 
   function replaceLog(lines, keepLines) {
     keep = keepLines ?? keep;
@@ -47,7 +55,7 @@ export function createPanelStore(bridge, { saveDelayMs = 300 } = {}) {
   }
 
   bridge.subscribe((event) => {
-    if (event.topic === TOPICS.status) status.value = Object.freeze(event.payload);
+    if (event.topic === TOPICS.job) job.value = event.payload ? Object.freeze(event.payload) : null;
     else if (event.topic === TOPICS.log) {
       if (event.payload.append) {
         keep = event.payload.keep ?? keep;
@@ -56,26 +64,21 @@ export function createPanelStore(bridge, { saveDelayMs = 300 } = {}) {
     }
   });
 
-  // Loading replaces `settings` from the control script without saving it back.
+  // Loading replaces `draft` from the control script without saving it back.
   let loading = false;
-  function loadSettings(from) {
+  function loadDraft(from) {
     loading = true;
-    Object.assign(settings, normalizeSettings(from));
+    Object.assign(draft, normalizeDraft(from));
     loading = false;
   }
 
   let saveTimer = null;
-  async function save() {
-    const reply = await bridge.request(INTENTS.settingsSet, { settings: { facility: settings.facility, slots: [...settings.slots] } });
-    notice.value = noticeOf(reply);
-  }
-  // Synchronous, so a load (flag set) is told apart from the person's edits.
   watch(
-    settings,
+    draft,
     () => {
       if (loading) return;
       clearTimeout(saveTimer);
-      saveTimer = setTimeout(save, saveDelayMs);
+      saveTimer = setTimeout(() => bridge.request(INTENTS.draftSet, { draft: { week: draft.week, weekday: draft.weekday, slots: [...draft.slots] } }), saveDelayMs);
     },
     { deep: true, flush: "sync" },
   );
@@ -86,35 +89,39 @@ export function createPanelStore(bridge, { saveDelayMs = 300 } = {}) {
       notice.value = noticeOf(reply);
       return;
     }
-    const { version: v, status: s, settings: kept, log: l } = reply.payload;
+    const { version: v, job: j, draft: d, log: l } = reply.payload;
     version.value = v;
-    status.value = Object.freeze(s);
+    job.value = j ? Object.freeze(j) : null;
     replaceLog(l.lines, l.keep);
-    loadSettings(kept);
+    loadDraft(d);
   }
 
-  async function toggle() {
+  // book / test / stop: the buttons wait for these.
+  async function send(intent, payload = {}) {
     busy.value = true;
     try {
-      const reply = await bridge.request(status.value?.running ? INTENTS.stop : INTENTS.start);
+      const reply = await bridge.request(intent, payload);
       notice.value = noticeOf(reply);
-      if (reply.outcome === "accepted") status.value = Object.freeze(reply.payload);
+      if (reply.outcome === "accepted" && reply.payload && "phase" in reply.payload) job.value = Object.freeze(reply.payload);
+      return reply;
     } finally {
       busy.value = false;
     }
   }
 
-  const clearLog = () => bridge.request(INTENTS.logClear);
-
   return {
     version: readonly(version),
-    status: readonly(status),
+    today: readonly(today),
+    job: readonly(job),
     notice: readonly(notice),
     busy: readonly(busy),
     log: shallowReadonly(log),
-    settings,
+    draft,
     refresh,
-    toggle,
-    clearLog,
+    book: (task) => send(INTENTS.book, task),
+    test: (task) => send(INTENTS.test, task),
+    stop: () => send(INTENTS.stop),
+    clearLog: () => bridge.request(INTENTS.logClear),
+    dispose: () => clearInterval(clock),
   };
 }

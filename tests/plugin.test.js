@@ -13,70 +13,63 @@ async function running(t) {
   devkit.panel.open();
 }
 
-test("the first read carries status, settings and the log", async (t) => {
+const two = (n) => String(n).padStart(2, "0");
+const dateIn = (days) => {
+  const t = new Date(devkit.clock.now());
+  t.setDate(t.getDate() + days);
+  return `${t.getFullYear()}-${two(t.getMonth() + 1)}-${two(t.getDate())}`;
+};
+
+test("the first read carries the version, today, the draft, the job and the log", async (t) => {
   await running(t);
   const reply = await devkit.panel.send("icondo.state.read", {});
   assert.equal(reply.outcome, "accepted", JSON.stringify(reply));
-  assert.deepEqual(reply.payload.status, { running: false, stoppedBecause: null });
-  assert.deepEqual(reply.payload.settings, { facility: "", slots: [] });
+  assert.match(reply.payload.version, /^0\.2\.0\+[0-9a-f]{7,}(-dirty)?$/);
+  assert.equal(reply.payload.today, dateIn(0));
+  assert.deepEqual(reply.payload.draft, { week: "this", weekday: 0, slots: [] });
+  assert.equal(reply.payload.job, null);
   assert.match(reply.payload.log.lines.at(-1).text, /^plugin\.start /);
 });
 
-test("settings are validated, kept in storage and read back after a restart", async (t) => {
+test("the draft is kept in storage and read back after a restart", async (t) => {
   await running(t);
-  const bad = await devkit.panel.send("icondo.settings.set", { settings: { facility: "Tennis", slots: ["25:00"] } });
-  assert.equal(bad.outcome, "invalid-payload", JSON.stringify(bad)); // the host's wire spelling of `invalid_payload`
-  assert.equal(bad.reason, "bad_settings");
-
-  const settings = { facility: "Tennis Court 1", slots: ["19:00", "20:00"] };
-  const good = await devkit.panel.send("icondo.settings.set", { settings });
-  assert.equal(good.outcome, "accepted", JSON.stringify(good));
-  assert.deepEqual(devkit.storage.read().settings, settings);
-
+  const draft = { week: "next", weekday: 3, slots: [19, 20] };
+  const set = await devkit.panel.send("icondo.draft.set", { draft });
+  assert.equal(set.outcome, "accepted", JSON.stringify(set));
+  assert.deepEqual(devkit.storage.read().draft, draft);
   await devkit.plugin.restart();
   devkit.panel.open();
-  const read = await devkit.panel.send("icondo.state.read", {});
-  assert.deepEqual(read.payload.settings, settings);
+  assert.deepEqual((await devkit.panel.send("icondo.state.read", {})).payload.draft, draft);
 });
 
-test("a log line is published alone, never with the whole state", async (t) => {
+test("a task is refused before anything is tapped when it cannot be done", async (t) => {
   await running(t);
-  devkit.panel.subscribe("icondo.log");
-  const before = devkit.observed.publications().length;
-  await devkit.panel.send("icondo.settings.set", { settings: { facility: "Squash", slots: [] } });
-  await devkit.clock.settle();
-  const published = devkit.observed.publications().slice(before);
-  assert.equal(published.length, 1, JSON.stringify(published));
-  assert.equal(published[0].topic, "icondo.log");
-  assert.deepEqual(Object.keys(published[0].payload).sort(), ["append", "keep"]);
-  assert.match(published[0].payload.append.text, /^settings\.change facility=Squash/);
-});
-
-test("a run starts, reports that the flow is undefined and stops by itself", async (t) => {
-  await running(t);
-  const started = await devkit.panel.send("icondo.start", {});
-  assert.equal(started.outcome, "accepted", JSON.stringify(started));
-  await devkit.clock.settle();
-  const read = await devkit.panel.send("icondo.state.read", {});
-  assert.deepEqual(read.payload.status, { running: false, stoppedBecause: "flow_undefined" });
-  const stop = await devkit.panel.send("icondo.stop", {});
-  assert.equal(stop.outcome, "refused");
-  assert.equal(stop.reason, "not_running");
-});
-
-test("a run starts only while iCondo is in front", async (t) => {
+  const cases = [
+    [{ date: dateIn(-1), slots: [14] }, "date_passed"],
+    [{ date: dateIn(3), slots: [14, 16] }, "bad_task"],
+  ];
+  for (const [task, reason] of cases) {
+    const reply = await devkit.panel.send("icondo.book", task);
+    assert.equal(reply.outcome, "refused", JSON.stringify(reply));
+    assert.equal(reply.reason, reason);
+  }
   devkit.device.setApplication("com.android.launcher");
-  await running(t);
-  const refused = await devkit.panel.send("icondo.start", {});
-  assert.equal(refused.outcome, "refused", JSON.stringify(refused));
-  assert.equal(refused.reason, "icondo_not_in_front");
-  devkit.device.setApplication("com.icondo");
-  const started = await devkit.panel.send("icondo.start", {});
-  assert.equal(started.outcome, "accepted", JSON.stringify(started));
+  const away = await devkit.panel.send("icondo.book", { date: dateIn(3), slots: [14] });
+  assert.equal(away.reason, "icondo_not_in_front");
+  assert.equal(devkit.observed.touches().length, 0);
 });
 
-test("the version names the commit the package was built from", async (t) => {
+test("a book job on a screen that is not iCondo's ends failed, publishes its end and taps nothing", async (t) => {
   await running(t);
-  const read = await devkit.panel.send("icondo.state.read", {});
-  assert.match(read.payload.version, /^0\.1\.0\+[0-9a-f]{7,}(-dirty)?$/);
+  devkit.panel.subscribe("icondo.job");
+  const reply = await devkit.panel.send("icondo.book", { date: dateIn(1), slots: [14] });
+  assert.equal(reply.outcome, "accepted", JSON.stringify(reply));
+  assert.equal(reply.payload.phase, "starting");
+  await devkit.clock.settle();
+  const jobs = devkit.observed.publications().filter((p) => p.topic === "icondo.job").map((p) => p.payload);
+  const end = jobs.at(-1);
+  assert.equal(end.phase, "failed", JSON.stringify(jobs));
+  assert.ok(end.reason && end.message, JSON.stringify(end));
+  assert.equal(devkit.observed.touches().length, 0, "nothing tapped on a screen it does not know");
+  assert.equal(devkit.storage.read().job.phase, "failed");
 });

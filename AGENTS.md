@@ -1,13 +1,15 @@
 # DrEmu plugin: iCondo Reservation
 
-一个 DrEmu 插件，在 iCondo App 里自动完成球场（设施）预定。本文件是仓库的唯一入口：任何人（或 agent）在这里动手之前先读它，再按下表选读。
+一个 DrEmu 插件，在 iCondo App 里自动预订网球场：立即订，或在日期开放的 00:00 抢订。本文件是仓库的唯一入口：任何人（或 agent）在这里动手之前先读它，再按下表选读。
 
 ## Loading Map
 
 | 你要做的事 | 读 | 除非任务扩展，否则跳过 |
 | --- | --- | --- |
 | 改任何东西之前，弄清「这个插件要做什么」、还有哪些待定 | `docs/REQUIREMENTS.md` | `docs/ARCHITECTURE.md` |
-| 改代码结构、面板协议、面板渲染方式、构建与测试 | `docs/ARCHITECTURE.md` | 其余 |
+| 改导航、预订、取消、抢订时间安排，或某一步的成功判断 / 失败原因 | `docs/FLOW.md` + `docs/REQUIREMENTS.md` §术语与画面 | `docs/ARCHITECTURE.md` |
+| 改代码结构、面板协议、面板渲染方式、素材管线、构建与测试 | `docs/ARCHITECTURE.md` | 其余 |
+| 看需求原文 | `prompts/requirement.md`（git 忽略） | 其余 |
 | 了解 DrEmu 插件系统本身（manifest、capability、坐标系、`dremu` API、devkit） | `/Users/kael/Codes/game/DrEmu/docs/PLUGIN_DEVELOPER_GUIDE.md`（仓库外，绝对路径） | 本仓库 docs |
 | 做看屏幕 / 点屏幕 / 识别数字 / 恢复流程 / 部署之前，先看同类插件踩过的坑 | `/Users/kael/Codes/game/DrEmu-plugin-letsgo-fishing-island/docs/PLUGIN_LESSONS.md`（仓库外，绝对路径） | 本仓库 docs |
 | 查看用户原话形式的需求台账 | `.omnipowers/requirements.md` | 其余 |
@@ -18,6 +20,7 @@
 
 - **需求文档记录最终状态**，不是变更历史。需求变了就改正文，不追加 changelog。
 - 源码在 `plugin/`，构建产物在 `dist/`（git 忽略）。`dist/` 就是 DrEmu 加载的包。
+- `screenshots/` 是 git 忽略的本地素材；`plugin/asset-list.json` 决定读哪些，`npm run build` 把它们编译成 `dist/assets.js`。
 - 所有面板 UI 用 Vite + Vue 3（`<script setup>`、Composition API），按 `docs/ARCHITECTURE.md` §面板渲染 的规则写：按切片订阅、局部更新，禁止整页刷新。
 - 控制脚本运行在无 DOM、无网络、无 npm 的沙箱里，`plugin/control.js`、`plugin/core/*.js`、`plugin/shared/*.js` 不得 import Node 模块或 npm 包。
 - 坐标永不自行取整（DrEmu 只在设备边界取整一次）。
@@ -29,7 +32,7 @@
 ## 命令
 
 ```bash
-npm run build     # 原子构建：在 .dist-staging/ 里 Vite 构建 panel、拷贝控制脚本与模块、写 version.js，全部成功才替换 dist/
+npm run build     # 原子构建：在 .dist-staging/ 里 Vite 构建 panel、拷贝控制脚本与模块、写 version.js、生成 assets.js，全部成功才替换 dist/
 npm test          # 先 build，再 dremu-plugin-devkit test（devkit 以 file: 依赖 ../DrEmu/instruments/plugin-devkit）
 ```
 

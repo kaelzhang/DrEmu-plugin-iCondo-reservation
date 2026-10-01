@@ -1,11 +1,12 @@
 <script setup>
-// The panel: the run control, the settings form and the log. Each child reads
-// its own slices of the store, so none re-renders for another's change.
+// The panel: the header, the task form, the job's state and the log. Each
+// child reads its own slices of the store, so none re-renders for another's change.
 import { onMounted } from "vue";
+import JobCard from "./JobCard.vue";
 import LogView from "./LogView.vue";
 import NoticeBar from "./NoticeBar.vue";
-import RunControl from "./RunControl.vue";
-import SettingsForm from "./SettingsForm.vue";
+import PanelHeader from "./PanelHeader.vue";
+import TaskForm from "./TaskForm.vue";
 import { usePanel } from "./store.js";
 
 const { refresh } = usePanel();
@@ -19,8 +20,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <RunControl />
+  <PanelHeader />
+  <TaskForm />
   <NoticeBar />
-  <SettingsForm />
+  <JobCard />
   <LogView />
 </template>

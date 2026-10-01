@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "me.kael.icondo-reservation",
   "name": "iCondo Reservation",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "control": "control.js",
   "panel": "panel/index.html",
   "screen": {
@@ -13,8 +13,16 @@
   "storage": {
     "quota_bytes": 65536
   },
+  "logs": {
+    "channels": {
+      "booking": { "retain_mib": 16 }
+    }
+  },
   "grant": {
     "capabilities": [
+      "device.input",
+      "device.capture",
+      "device.recognize",
       "device.storage"
     ]
   }
