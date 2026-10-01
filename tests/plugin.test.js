@@ -74,3 +74,9 @@ test("a run starts only while iCondo is in front", async (t) => {
   const started = await devkit.panel.send("icondo.start", {});
   assert.equal(started.outcome, "accepted", JSON.stringify(started));
 });
+
+test("the version names the commit the package was built from", async (t) => {
+  await running(t);
+  const read = await devkit.panel.send("icondo.state.read", {});
+  assert.match(read.payload.version, /^0\.1\.0\+[0-9a-f]{7,}(-dirty)?$/);
+});

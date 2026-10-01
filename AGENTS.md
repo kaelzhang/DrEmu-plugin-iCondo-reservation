@@ -9,6 +9,7 @@
 | 改任何东西之前，弄清「这个插件要做什么」、还有哪些待定 | `docs/REQUIREMENTS.md` | `docs/ARCHITECTURE.md` |
 | 改代码结构、面板协议、面板渲染方式、构建与测试 | `docs/ARCHITECTURE.md` | 其余 |
 | 了解 DrEmu 插件系统本身（manifest、capability、坐标系、`dremu` API、devkit） | `/Users/kael/Codes/game/DrEmu/docs/PLUGIN_DEVELOPER_GUIDE.md`（仓库外，绝对路径） | 本仓库 docs |
+| 做看屏幕 / 点屏幕 / 识别数字 / 恢复流程 / 部署之前，先看同类插件踩过的坑 | `/Users/kael/Codes/game/DrEmu-plugin-letsgo-fishing-island/docs/PLUGIN_LESSONS.md`（仓库外，绝对路径） | 本仓库 docs |
 | 查看用户原话形式的需求台账 | `.omnipowers/requirements.md` | 其余 |
 
 没有信号命中 → 只读 `docs/REQUIREMENTS.md`，然后问。
@@ -20,12 +21,15 @@
 - 所有面板 UI 用 Vite + Vue 3（`<script setup>`、Composition API），按 `docs/ARCHITECTURE.md` §面板渲染 的规则写：按切片订阅、局部更新，禁止整页刷新。
 - 控制脚本运行在无 DOM、无网络、无 npm 的沙箱里，`plugin/control.js`、`plugin/core/*.js`、`plugin/shared/*.js` 不得 import Node 模块或 npm 包。
 - 坐标永不自行取整（DrEmu 只在设备边界取整一次）。
+- 沙箱里的 `toLocaleTimeString` 不认 24 小时制选项，时间一律用 `core/logger.js` 的 `clock()` 自己拼。
+- 版本号形如 `0.1.0+<提交>`（未提交改动时带 `-dirty`），面板标题旁显示，用来确认设备跑的是哪一版。
+- 不要卸载再重装插件：卸载会清空插件存储（含设置）。
 - 提交信息不带任何工具署名 trailer。
 
 ## 命令
 
 ```bash
-npm run build     # 清空 dist/ → Vite 构建 panel → 拷贝控制脚本与模块 → 写 version.js
+npm run build     # 原子构建：在 .dist-staging/ 里 Vite 构建 panel、拷贝控制脚本与模块、写 version.js，全部成功才替换 dist/
 npm test          # 先 build，再 dremu-plugin-devkit test（devkit 以 file: 依赖 ../DrEmu/instruments/plugin-devkit）
 ```
 

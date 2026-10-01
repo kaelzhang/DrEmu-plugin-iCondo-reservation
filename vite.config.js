@@ -39,9 +39,11 @@ export default defineConfig(({ mode }) => {
     define: { __VUE_OPTIONS_API__: "false", __VUE_PROD_DEVTOOLS__: "false", __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: "false" },
     plugins: [vue(), sameOriginResources()],
     build: {
-      outDir: fileURLToPath(new URL(`dist/${mode}/`, import.meta.url)),
-      // `tools/clean-output.mjs` empties `dist/` before the first document
-      // builds, so no document build empties what another wrote.
+      // tools/build.mjs builds into a staging directory and swaps it in as
+      // `dist/` only when the whole package is complete.
+      outDir: fileURLToPath(new URL(`${process.env.DREMU_PACKAGE_DIR ?? "dist"}/${mode}/`, import.meta.url)),
+      // The staging directory starts empty, so no document build empties
+      // what another wrote.
       emptyOutDir: false,
       assetsDir: "assets",
       assetsInlineLimit: 0,

@@ -9,8 +9,8 @@
 | `plugin/core/` | 控制脚本与面板共用的纯逻辑（`settings.js` 校验与规范化、`logger.js` 环形日志、`icondo.js` 目标 App 的常量） |
 | `plugin/shared/protocol.js` | intent 与 topic 名称，两端唯一来源 |
 | `plugin/panel/src/` | Vue 面板：`store.js`、`bridge.js`（`dremuPanel` 请求/事件桥）、组件、`panel.css` |
-| `tools/` | `clean-output.mjs` 清空 `dist/`，`build-dist.mjs` 拷贝运行时文件并写 `version.js` |
-| `tests/` | devkit 用例（`plugin.test.js`）与面板渲染用例（`panel-render.test.js`） |
+| `tools/` | `build.mjs` 原子构建（先写 `.dist-staging/`，全部成功才换成 `dist/`，失败时旧 `dist/` 不动），`build-dist.mjs` 拷贝运行时文件并写 `version.js`（`<manifest 版本>+<提交>[-dirty]`） |
+| `tests/` | devkit 用例（`plugin.test.js`）、面板渲染用例（`panel-render.test.js`）、日志用例（`logger.test.js`） |
 
 ## 面板协议
 

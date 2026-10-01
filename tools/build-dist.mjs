@@ -4,13 +4,15 @@
 // `dist/` is the package DrEmu loads: the manifest, the control script and the
 // modules it imports — and nothing else. Every path the manifest names stays
 // at the same relative position it occupies under `plugin/`. `version.js`
-// (`export default "<manifest version>"`) is written beside the control
-// script, so the run records carry the version without reading the package.
+// (`export default "<manifest version>+<commit>"`, `-dirty` when the tree has
+// uncommitted changes) is written beside the control script, so the panel and
+// the run records show exactly which build the device runs.
+import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { pathToFileURL, fileURLToPath } from "node:url";
 
 const PLUGIN = new URL("../plugin/", import.meta.url);
-const DIST = new URL("../dist/", import.meta.url);
+const DIST = pathToFileURL(`${process.argv[2] ?? fileURLToPath(new URL("../dist", import.meta.url))}/`);
 
 // A file copied as itself.
 const FILES = ["manifest.json", "control.js"];
@@ -25,8 +27,17 @@ for (const name of FILES) {
   cpSync(at(PLUGIN, name), at(DIST, name));
 }
 
+function commit() {
+  const git = (...args) => execFileSync("git", args, { cwd: fileURLToPath(PLUGIN), encoding: "utf8" }).trim();
+  try {
+    return `+${git("rev-parse", "--short", "HEAD")}${git("status", "--porcelain") ? "-dirty" : ""}`;
+  } catch {
+    return ""; // not a git checkout, or no commit yet
+  }
+}
+
 const { version } = JSON.parse(readFileSync(at(PLUGIN, "manifest.json"), "utf8"));
-writeFileSync(at(DIST, "version.js"), `export default ${JSON.stringify(version)};\n`);
+writeFileSync(at(DIST, "version.js"), `export default ${JSON.stringify(version + commit())};\n`);
 
 for (const name of MODULE_DIRECTORIES) {
   const from = new URL(`${name}/`, PLUGIN);

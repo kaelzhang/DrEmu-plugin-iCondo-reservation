@@ -7,7 +7,7 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "build": "node tools/clean-output.mjs && vite build --mode panel && node tools/build-dist.mjs",
+    "build": "node tools/build.mjs",
     "pretest": "npm run build",
     "test": "dremu-plugin-devkit test"
   },
