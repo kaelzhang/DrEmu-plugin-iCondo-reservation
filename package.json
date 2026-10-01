@@ -15,6 +15,7 @@
     "@dremu/plugin-devkit": "file:../DrEmu/instruments/plugin-devkit",
     "@vitejs/plugin-vue": "6.0.8",
     "jsdom": "29.1.1",
+    "pngjs": "^7.0.0",
     "vite": "8.3.0",
     "vue": "3.5.42"
   },

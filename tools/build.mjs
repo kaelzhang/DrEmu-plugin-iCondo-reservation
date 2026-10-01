@@ -19,7 +19,9 @@ rmSync(RETIRED, { recursive: true, force: true });
 
 process.env.DREMU_PACKAGE_DIR = ".dist-staging";
 for (const mode of DOCUMENTS) await build({ configFile: `${ROOT}vite.config.js`, mode, logLevel: "warn" });
-execFileSync(process.execPath, [fileURLToPath(new URL("build-dist.mjs", import.meta.url)), STAGING], { stdio: "inherit" });
+for (const step of ["build-dist.mjs", "build-assets.mjs"]) {
+  execFileSync(process.execPath, [fileURLToPath(new URL(step, import.meta.url)), STAGING], { stdio: "inherit" });
+}
 
 if (existsSync(DIST)) renameSync(DIST, RETIRED);
 renameSync(STAGING, DIST);

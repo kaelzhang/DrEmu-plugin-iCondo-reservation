@@ -1,0 +1,21 @@
+{
+  "regions": {
+    "home": { "use": "match", "images": ["capture"] },
+    "facility": { "use": "match", "images": ["capture"] },
+    "book-tab": { "use": "match", "images": ["on", "off"] },
+    "active-tab": { "use": "match", "images": ["on", "off"] },
+    "facility-keep-alive": { "use": "rect" },
+    "tennis-court": { "use": "match", "images": ["capture"] },
+    "back": { "use": "match", "images": ["capture"] },
+    "system-back": { "use": "rect" },
+    "next": { "use": "match", "images": ["capture"], "colour": true },
+    "agree": { "use": "match", "images": ["capture"] },
+    "confirm": { "use": "match", "images": ["capture"] },
+    "calendar": { "use": "match", "images": ["capture"] },
+    "cancel-yes": { "use": "match", "images": ["capture"] }
+  },
+  "crops": {
+    "tennis-page": { "from": "tennis-court.png", "rect": { "x": 630, "y": 188, "width": 80, "height": 82 } },
+    "cancel": { "from": "active.png", "rect": { "x": 560, "y": 458, "width": 100, "height": 100 } }
+  }
+}
