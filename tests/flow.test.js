@@ -140,6 +140,15 @@ test("an ignored tap on the active tab is made again, and the list is only looke
   assert.deepEqual(fake.state.taps.map((t) => t.screen), ["facility-bottom", "facility-bottom", "active", "cancel-confirm-bottom"]);
 });
 
+test("the cancel sheet is swiped up at once to reach yes, without waiting on its first screen", { skip, timeout: 30_000 }, async () => {
+  const { fake, flow } = run("active");
+  const started = Date.now();
+  await flow.cancelBooking({ date: "2026-10-02", slots: [14] });
+  assert.equal(fake.state.screen, "active");
+  assert.equal(fake.state.swipes.length, 1);
+  assert.ok(Date.now() - started < 1500, `took ${Date.now() - started} ms`);
+});
+
 test("a booking not on the active tab is not cancelled", { skip, timeout: 30_000 }, async () => {
   const { fake, flow } = run("active");
   await assert.rejects(flow.cancelBooking({ date: "2026-10-06", slots: [8, 9] }), failure("cancel_not_found"));

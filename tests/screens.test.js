@@ -76,6 +76,19 @@ test("the tennis-court card is found going down the list, and only at the bottom
   assert.ok(Math.abs(found.y - 1031) <= 2, JSON.stringify(found));
 });
 
+// On the device (QuickJS) one cancel scan took 9 s: 150 proposals, 1050 SSIMs.
+test("a scan of a mostly blank template stays cheap: the cancel column in under 120 ms here", { skip }, async () => {
+  const { screen } = on("active");
+  let best = Infinity;
+  for (let i = 0; i < 3; i += 1) {
+    const started = performance.now();
+    const cards = await screen.scanY("cancel", { top: 300, bottom: 1180 });
+    best = Math.min(best, performance.now() - started);
+    assert.deepEqual(cards.map((c) => c.y), [458]);
+  }
+  assert.ok(best < 120, `${best.toFixed(0)} ms`);
+});
+
 test("only the first card on the active tab has a cancel button", { skip }, async () => {
   const cards = await on("active").screen.scanY("cancel", { top: 300, bottom: 1180 });
   assert.equal(cards.length, 1, JSON.stringify(cards));

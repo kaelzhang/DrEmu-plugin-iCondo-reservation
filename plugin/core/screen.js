@@ -10,6 +10,7 @@ export const STAY = 0.6; // …and is still there, once seen, at or above this (
 // of it (0..441): grey structure alone cannot tell next lit from unlit.
 export const COLOUR = 12;
 const TAP_MARGIN = 0.1; // a region tap lands in its inner 80%
+const MAX_PROPOSALS = 6; // places a scan checks closely: more than any list shows at once
 
 // The point to tap in `rect` for two numbers in [0, 1): within the inner 80%.
 export function pointInside(rect, rx, ry) {
@@ -150,6 +151,7 @@ export function createScreen({ device, assets, signal, log, random = Math.random
     // engine for one long turn.
     async scanY(name, { top, bottom, threshold = MATCH }) {
       const { rect, images } = region(name);
+      const started = now();
       const template = Object.values(images)[0];
       const area = { x: rect.x, y: top, width: rect.width, height: bottom - top };
       const shot = await capture(area);
@@ -173,21 +175,30 @@ export function createScreen({ device, assets, signal, log, random = Math.random
         proposals.push({ y: y * 2, mad: sum / (tsmall.width * tsmall.height) });
         if (y % 32 === 31) await yieldTurn();
       }
-      // Local minima of the difference that are close enough to be worth a look.
+      // The few places that differ least, a template height apart: a mostly
+      // blank template (cancel) differs little from any blank stretch too, and
+      // checking every such stretch cost 1050 SSIMs (9 s on the device).
+      const proposed = [];
+      for (const p of [...proposals].sort((a, b) => a.mad - b.mad)) {
+        if (p.mad >= 24 || proposed.length >= MAX_PROPOSALS) break;
+        if (!proposed.some((q) => Math.abs(q.y - p.y) < template.height)) proposed.push(p);
+      }
       const found = [];
-      const candidates = proposals.filter((p, i) => p.mad < 24 && (i === 0 || p.mad <= proposals[i - 1].mad) && (i === proposals.length - 1 || p.mad <= proposals[i + 1].mad));
-      for (const { y } of candidates) {
+      let checked = 0;
+      for (const { y } of proposed) {
         let best = { y: -1, score: -1 };
-        for (let dy = -3; dy <= 3; dy += 1) {
+        for (let dy = -2; dy <= 2; dy += 1) {
           const yy = y + dy;
           if (yy < 0 || yy + template.height > area.height) continue;
           const window = gray.subarray(yy * area.width, (yy + template.height) * area.width);
           const s = ssim(window, template.gray, template.width, template.height);
+          checked += 1;
           if (s > best.score) best = { y: top + yy, score: s };
         }
         if (best.score >= threshold && !found.some((f) => Math.abs(f.y - best.y) < template.height / 2)) found.push(best);
         await yieldTurn();
       }
+      log.debug("scan", { name, proposed: proposed.length, checked, found: found.length, ms: now() - started });
       return found.sort((a, b) => a.y - b.y);
     },
 

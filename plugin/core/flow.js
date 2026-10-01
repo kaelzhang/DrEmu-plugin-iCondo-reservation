@@ -20,6 +20,9 @@ const ACTIVE_LIST_MS = 15_000;
 // Finding the tennis-court card: at most this many swipes, within this long.
 const MAX_LIST_SWIPES = 6;
 const SHOW_TENNIS_MS = 15_000;
+// Finding yes in the cancel sheet: at most this many swipes, within this long.
+const MAX_SHEET_SWIPES = 5;
+const SHEET_MS = 10_000;
 // How long a navigation tap gets to move the screen before it is taken again.
 const LEAVE_MS = 2000;
 // The facility list scrolls between these; the tennis-court card is found in it.
@@ -150,13 +153,6 @@ export function createFlow({ screen, device, log, now = Date.now }) {
     screen.fail("tennis_not_found", `facility 列表滑了 ${swipes} 次、${SHOW_TENNIS_MS / 1000} 秒内没找到 tennis court`);
   }
 
-  // Wait for `name` to show up going down a list: the first place it is
-  // found, or null when it has not within `timeoutMs`.
-  async function waitForScan(name, area, timeoutMs = 2000) {
-    const found = await screen.waitFor(async () => (await screen.scanY(name, area))[0] ?? null, { timeoutMs, intervalMs: 150 });
-    return found?.y ?? null;
-  }
-
   const tennisRect = (y) => ({ x: CARD.x, y, width: CARD.width, height: screen.region("tennis-court").rect.height });
 
   // Tap the card at `y` and wait for the booking page. Returns the ms it took, or null.
@@ -271,17 +267,22 @@ export function createFlow({ screen, device, log, now = Date.now }) {
     }
     if (target === null) screen.fail("cancel_not_found", `active 页里没找到 ${task.date} ${slotsLabel(task.slots)} 的可取消预订（${Math.round((now() - started) / 1000)} 秒内看了 ${looks} 次，找到 ${cards.length} 个 cancel）`);
     await screen.tapRect({ ...screen.region("cancel").rect, y: target }, "cancel");
-    // The sheet slides up from the bottom: each look waits for yes to show.
-    for (let swipes = 0; swipes <= 5; swipes += 1) {
-      const yes = await waitForScan("cancel-yes", { top: 500, bottom: 1180 });
-      if (yes !== null) {
-        await screen.tapRect({ ...screen.region("cancel-yes").rect, y: yes }, "cancel-yes");
+    // The sheet slides up from the bottom; yes sits below its first screen.
+    // Look, and swipe up at once when it is not there (as for the list).
+    const deadline = now() + SHEET_MS;
+    for (let swipes = 0; now() < deadline;) {
+      const [yes] = await screen.scanY("cancel-yes", { top: 500, bottom: 1180 });
+      if (yes) {
+        await screen.tapRect({ ...screen.region("cancel-yes").rect, y: yes.y }, "cancel-yes");
         const back = await screen.waitFor(async () => (await facilityTab()) === "active" || null, { timeoutMs: 10_000, intervalMs: 200 });
         if (!back) screen.fail("cancel_unconfirmed", "点了 yes 之后没有回到 active 页");
         log.info("cancel.success", { date: task.date, slots: slotsLabel(task.slots) });
         return;
       }
-      await screen.swipe(SHEET_SWIPE.from, SHEET_SWIPE.to, "cancel-sheet");
+      if (swipes < MAX_SHEET_SWIPES) {
+        await screen.swipe(SHEET_SWIPE.from, SHEET_SWIPE.to, "cancel-sheet");
+        swipes += 1;
+      }
     }
     await goBack("sheet");
     screen.fail("cancel_yes_missing", "取消确认面板里滑到底也没找到 yes");
