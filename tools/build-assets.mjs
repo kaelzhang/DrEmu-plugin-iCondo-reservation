@@ -1,5 +1,5 @@
 // Turn `screenshots/` into `<package>/assets.js`, an ES module the control
-// script imports (docs/ARCHITECTURE.md §素材). The control script cannot
+// script imports (docs/ASSETS.md). The control script cannot
 // decode PNG (no DOM, no npm), so decoding happens here, at build time.
 //
 // What is read is decided by `plugin/asset-list.json`; nothing else in

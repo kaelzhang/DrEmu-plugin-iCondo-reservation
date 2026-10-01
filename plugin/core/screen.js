@@ -1,6 +1,6 @@
 // The screen as the flows talk about it: "is it X", "wait for X", "tap X",
 // "find X going down the list". One driver wraps the `dremu.device` surface
-// and the templates built from screenshots/ (docs/ARCHITECTURE.md §屏幕).
+// and the templates built from screenshots/ (docs/ARCHITECTURE.md §目录, docs/ASSETS.md).
 import { bgraToGray, ssim } from "./ssim.js";
 import { TaskFailure, sleep, throwIfAborted } from "./timing.js";
 

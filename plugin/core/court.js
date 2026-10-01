@@ -1,4 +1,4 @@
-// The tennis-court booking page's fixed layout (docs/ARCHITECTURE.md §预定页):
+// The tennis-court booking page's fixed layout (docs/ASSETS.md §预订页的固定布局):
 // the two-week day grid and the 14 time slots, and how each cell's state is
 // read from its pixels — no text recognition. Measured on
 // screenshots/tennis-court.png and tennis-court-next.png (720 × 1280).

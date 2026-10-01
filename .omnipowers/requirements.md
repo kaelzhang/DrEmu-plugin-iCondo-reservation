@@ -40,3 +40,5 @@
   - evidence: 去掉点击后的连续两次读取，统一 waitFor + timeout；仅预订页首次读日期 / 时段状态保留两次一致（数据加载），写入 docs/FLOW.md 并已向 Kael 说明
 - R20 — 「region 更新：next: capture -> enabled，增加了 disabled 的状态」 (stated 2026-10-01)
   - evidence: plugin/asset-list.json next: [enabled, disabled]；flow.js 等 enabled；tests/screens.test.js 两张截图分别认出 enabled / disabled
+- R21 — 「你有把相关的背景知识，需求说明都落档吗」「也就是未来如果有其他 agent 接手，能够直接通过当前项目继续」 (stated 2026-10-01; verify by: 不依赖 prompts/、screenshots/ 与会话记忆，仅凭仓库文档即可理解需求、素材、现状与下一步)
+  - evidence: docs/REQUIREMENTS.md 覆盖原文全部要点与 Kael 的裁定；docs/ASSETS.md 区域 / 裁剪 / 截图 / 坐标与颜色 / 重新采集；docs/STATUS.md 现状与下一步；docs/ARCHITECTURE.md §运行与排查（环境、日志、平台差异）；AGENTS.md 入口表全部指到

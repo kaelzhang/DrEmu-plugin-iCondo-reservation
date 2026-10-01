@@ -1,4 +1,4 @@
-// Dates as the booking rules talk about them (docs/REQUIREMENTS.md §预定规则).
+// Dates as the booking rules talk about them (docs/REQUIREMENTS.md §预订规则).
 // A date is a local "YYYY-MM-DD" string; the local clock is the Mac's, which
 // is the condo's time zone. Weeks run Monday to Sunday, as on the app's grid.
 const DAY = 86_400_000;

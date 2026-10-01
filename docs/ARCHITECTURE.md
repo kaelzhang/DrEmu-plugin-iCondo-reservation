@@ -51,3 +51,19 @@
 6. **首帧就绪。** `PanelApp` 在 `onMounted` 里发出首个请求并派发 `dremu-panel-ready`（5 秒内必须派发）。
 
 `tests/panel-render.test.js` 用组件更新计数守住第 2、3 条：新日志行只更新 `LogView` 且保留已有行的 DOM 节点；任务变化只更新 `JobCard`（`TaskForm` 的按钮也依赖任务，但只在可用性真的变了时才重渲染）；点时段只更新 `TaskForm`。
+
+## 运行与排查
+
+**开发环境**（路径以本仓库根为基准）：
+
+- Node ≥ 24。`npm install` 之外，devkit 以 `file:../DrEmu/instruments/plugin-devkit` 依赖 DrEmu 检出（`/Users/kael/Codes/game/DrEmu`），它自己的 `node_modules` 和构建产物（`wasm/`、`product/`）由 DrEmu 生成；过期时 devkit 会给出具名拒绝和要在 DrEmu 里跑的命令（DrEmu UB64）。不要自己去改 DrEmu 仓库，有问题找 DrEmu 会话或 Kael。
+- `npm test` 先 `npm run build`（需要 `screenshots/`，见 `docs/ASSETS.md`），再 `dremu-plugin-devkit test`。直接跑单个文件：`node --import ./tests/register-vue.mjs --test tests/<名字>.test.js`。
+
+**装到 DrEmu**：`dist/` 已软链为 `~/Library/Application Support/DrEmu/plugins/icondo-reservation`；改代码后 `npm run build`，在设备窗口的插件行点 Refresh。第一次装：`ln -s "$PWD/dist" "$HOME/Library/Application Support/DrEmu/plugins/icondo-reservation"`，再在设备窗口 Plugins 里启用、点 Panel。面板标题旁的版本号 `0.2.0+<提交>` 用来确认设备跑的是哪一版。
+
+**真机日志**：`~/Library/Logs/ai.ost.dremu/Devices/dev-b5eded52ead88b158e56f28d6446e9bc/Plugins/me.kael.icondo-reservation/`，`default/` 是面板日志的全部行（含 debug：每次点击、每一步导航），`booking/` 是每个任务的事件。JSONL，`message` 字段即日志文本。本机没有 `dremuctl` 命令，直接读文件。
+
+**已知的平台差异**：
+
+- 一次运行最多同时持有 32 张截图（`image_handle_limit_exceeded`）。产品（QuickJS）里截图对象不再引用就释放；devkit 的 node 引擎目前从不释放（DrEmu UB66，修复中），所以长时间截图的 devkit 用例会撞上限——`tests/plugin.test.js` 里相应用例标了 todo。
+- devkit 的 worker 引擎（真实 QuickJS）下，插件的 `setTimeout` 轮询曾在 6 次截图后停住，原因待 DrEmu 查明（UB66 的第二项）。本插件尚未在 worker 引擎上跑通过。
