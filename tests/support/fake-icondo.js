@@ -33,12 +33,39 @@ function activeLoading() {
   return screen;
 }
 
+// "tennis-court-next-stale": Friday just chosen (tennis-court-next.png above
+// the slots) while the slots still show Thursday's (tennis-court.png below
+// y 612) — the grid reloads after a day is chosen.
+function staleSlots() {
+  const top = PNG.sync.read(readFileSync(new URL("tennis-court-next.png", DIR)));
+  const bottom = PNG.sync.read(readFileSync(new URL("tennis-court.png", DIR)));
+  bottom.data.copy(top.data, 612 * 720 * 4, 612 * 720 * 4, 968 * 720 * 4);
+  return top;
+}
+
+// "tennis-court-next-13": tennis-court-next.png with 13:00 chosen as well
+// (its cell filled with the chosen teal).
+function thirteenChosen() {
+  const screen = PNG.sync.read(readFileSync(new URL("tennis-court-next.png", DIR)));
+  for (let y = 710; y < 784; y += 1) {
+    for (let x = 192; x < 348; x += 1) {
+      const i = (y * 720 + x) * 4;
+      screen.data[i] = 0x5b;
+      screen.data[i + 1] = 0xc6;
+      screen.data[i + 2] = 0xcc;
+    }
+  }
+  return screen;
+}
+
 const cache = new Map();
 function picture(name) {
   if (!cache.has(name)) {
     if (name === "blank") cache.set(name, blank());
     else if (name === "home") cache.set(name, home());
     else if (name === "active-loading") cache.set(name, activeLoading());
+    else if (name === "tennis-court-next-stale") cache.set(name, staleSlots());
+    else if (name === "tennis-court-next-13") cache.set(name, thirteenChosen());
     else cache.set(name, PNG.sync.read(readFileSync(new URL(`${name}.png`, DIR))));
   }
   return cache.get(name);
@@ -53,11 +80,14 @@ const inside = (p, r) => p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y 
 // first n matching taps do nothing (a page not yet taking input); `times: n`
 // lets the route apply to the first n matching taps only, later ones fall
 // through to the next route.
-export function createFakeIcondo({ screen, routes, digits = () => [] }) {
-  const state = { screen, taps: [], swipes: [], app: "com.icondo", transition: null };
+// `lagMs`: after every tap or swipe that changes the screen, the old screen
+// stays this long before anything happens — the device's response time.
+// With it, code that judges the screen right after acting fails its tests.
+export function createFakeIcondo({ screen, routes, digits = () => [], lagMs = 0 }) {
+  const state = { screen, taps: [], swipes: [], app: "com.icondo", timeline: [] };
   function image(rect) {
-    let shown = state.screen;
-    if (state.transition && Date.now() < state.transition.until) shown = state.transition.screen;
+    const at = Date.now();
+    const shown = state.timeline.find((frame) => at < frame.until)?.screen ?? state.screen;
     const png = picture(shown);
     const bgra = new Uint8Array(rect.width * rect.height * 4);
     for (let y = 0; y < rect.height; y += 1) {
@@ -80,8 +110,12 @@ export function createFakeIcondo({ screen, routes, digits = () => [] }) {
       route.ignore -= 1;
       return;
     }
+    const at = Date.now();
+    const shownNow = state.timeline.find((frame) => at < frame.until)?.screen ?? state.screen;
+    state.timeline = [];
+    if (lagMs > 0) state.timeline.push({ screen: shownNow, until: at + lagMs });
+    if (route.via) state.timeline.push({ screen: route.via.screen, until: at + lagMs + route.via.ms });
     state.screen = route.to;
-    if (route.via) state.transition = { screen: route.via.screen, until: Date.now() + route.via.ms };
   }
   const device = {
     async capturePage(rect) {

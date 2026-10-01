@@ -53,8 +53,8 @@ function digits(screen, rect) {
 // The same routes with every tap's page pushed in: `ms` of a blank frame first.
 const PUSHED = (ms) => Object.fromEntries(Object.entries(ROUTES()).map(([from, routes]) => [from, routes.map((route) => (route.on === "tap" ? { ...route, via: { screen: "blank", ms } } : route))]));
 
-function run(screen, routes = ROUTES()) {
-  const fake = createFakeIcondo({ screen, routes, digits });
+function run(screen, routes = ROUTES(), { lagMs = 0 } = {}) {
+  const fake = createFakeIcondo({ screen, routes, digits, lagMs });
   const shown = createScreen({ device: fake.device, assets, log: quiet, gapMs: 0 });
   const flow = createFlow({ screen: shown, device: fake.device, log: quiet, now });
   return { fake, flow, screen: shown };
@@ -93,6 +93,27 @@ test("the same test job goes through when every tapped page is pushed in over 40
   await job({ kind: "test", date: "2026-10-02", slots: [14] });
   assert.equal(fake.state.screen, "active");
   assert.equal(fake.state.taps.length, 8, JSON.stringify(fake.state.taps.map((t) => t.screen)));
+});
+
+// The device as it behaves: every tap answered after 300 ms of the old
+// screen, pushed pages, and a slot grid that shows the previous day's for a
+// while after a day is chosen. Nothing may be judged before it is ready.
+test("a test job goes through when every response is late, pages are pushed and the slots reload", { skip, timeout: 60_000 }, async () => {
+  const routes = PUSHED(300);
+  routes["facility-bottom"] = routes["facility-bottom"].map((route) => (route.to === "tennis-court-next" ? { ...route, to: "tennis-court" } : route));
+  routes["tennis-court"] = [
+    { on: "tap", rect: dayRect({ row: 0, col: 4 }), to: "tennis-court-next", via: { screen: "tennis-court-next-stale", ms: 800 } },
+    { on: "tap", rect: BACK, to: "facility-bottom" },
+  ];
+  routes["tennis-court-next"] = [{ on: "tap", rect: slotRect(13), to: "tennis-court-next-13" }, { on: "tap", rect: BACK, to: "facility-bottom" }];
+  routes["tennis-court-next-13"] = [{ on: "tap", rect: r(260, 1106, 207, 63), to: "agree", via: { screen: "blank", ms: 300 } }];
+  const digitsFor13 = (screen, rect) => (screen !== "active" ? [] : rect.y === 458 ? ["02", "2026"] : rect.y === 492 ? ["01", "00", "02", "00"] : []);
+  const fake = createFakeIcondo({ screen: "facility-top", routes, digits: digitsFor13, lagMs: 300 });
+  const shown = createScreen({ device: fake.device, assets, log: quiet });
+  const flow = createFlow({ screen: shown, device: fake.device, log: quiet, now });
+  const job = createJob({ flow, screen: shown, log: quiet, booking: { info() {} }, update() {}, now });
+  await job({ kind: "test", date: "2026-10-02", slots: [13] });
+  assert.equal(fake.state.screen, "active");
 });
 
 test("an open day and an open slot are tapped once each before next", { skip, timeout: 30_000 }, async () => {
@@ -251,6 +272,17 @@ test("a list that jumps back to the top as the card is tapped is scrolled again 
   assert.equal(fake.state.screen, "tennis-court-next");
   assert.equal(fake.state.swipes.length, 1);
   assert.ok(Date.now() - started < 2500, `took ${Date.now() - started} ms`);
+});
+
+test("after a day is chosen, its slots are waited for; the previous day's grid is not taken for them", { skip, timeout: 30_000 }, async () => {
+  const routes = ROUTES();
+  // Choosing Friday: the day turns at once, the slots still show Thursday's for 600 ms.
+  routes["tennis-court"] = [{ on: "tap", rect: dayRect({ row: 0, col: 4 }), to: "tennis-court-next", via: { screen: "tennis-court-next-stale", ms: 600 } }];
+  routes["tennis-court-next"] = [{ on: "tap", rect: slotRect(13), to: "tennis-court-next-13" }];
+  routes["tennis-court-next-13"] = [{ on: "tap", rect: r(260, 1106, 207, 63), to: "agree" }];
+  const { flow } = run("tennis-court", routes);
+  // Friday 13:00 is closed on Thursday's grid and open on Friday's.
+  assert.deepEqual(await flow.bookHere({ date: "2026-10-02", slots: [13] }), { booked: true });
 });
 
 test("iCondo leaving the front stops the flow", { skip }, async () => {

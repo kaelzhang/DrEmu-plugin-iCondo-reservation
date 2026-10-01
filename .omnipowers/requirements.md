@@ -50,3 +50,5 @@
   - evidence: 点击无效改为「0.8 s 内纹丝不动即重点」（tapUntil / knownPage），覆盖 back、标签、日期、next、agree、cancel、yes；轮询 40 ms；where(expect)；输入间隔 100 ms；扫描 1/4 粗筛、让出次数 20+→约 5；tests/flow.test.js 五个被忽略点击用例旧代码 2.0–4.6 s 红、新代码 0.86–1.8 s 绿
 - R25 — 「我说过，这个列表页，你就应该直接一边滚动，一边 waitFor tennis-court，tennis-court 出现就立即停止滚动，并且点击」 (stated 2026-10-01)
   - evidence: flow.js showTennis 滑动中持续扫描、看到即返回（滑动中则等手势结束再取位置）；enterTennis 用 tapUntil 并在原位置附近重新定位卡片；tests/flow.test.js「card the list swallowed」旧代码 8.0 s 红、新代码绿
+- R26 — 「请你修复，并且做深刻反思，如何彻底避免这种问题再次出现」 (stated 2026-10-02；针对 00:00 抢订把加载中的旧时段格当成答案而失败)
+  - evidence: flow.js 否定结论全部改为 waitFor 超时后（日期、时段、cancel 卡片、前台 App），enterTennis 先等卡片就位；假设备 lagMs + 旧时段格过渡，「every response is late」端到端用例（旧代码 slot_unavailable 红、新代码绿）；docs/FLOW.md §读屏幕的原则 为唯一来源，AGENTS.md 加入自查清单

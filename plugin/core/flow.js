@@ -16,6 +16,10 @@ import { ICONDO_PACKAGE } from "./icondo.js";
 // Waits for what iCondo loads over the network (the booking page's days and
 // slots, the active tab's list): seconds, more at the 00:00 rush.
 const LOADING_MS = 10_000;
+// A day shown closed on entering, or wanted slots shown closed after the day
+// is chosen, are taken as such only once they have stayed so this long.
+const DAY_OPEN_MS = 1000;
+const SLOTS_OPEN_MS = 3000;
 const ACTIVE_LIST_MS = 15_000;
 // Finding the tennis-court card: at most this many swipes, within this long.
 const MAX_LIST_SWIPES = 6;
@@ -87,9 +91,15 @@ export function createFlow({ screen, device, log, now = Date.now }) {
     return null;
   }
 
+  // iCondo in front, or stop. A transition can report something else for a
+  // moment: only a front that stays elsewhere for 2 s stops the flow.
   async function assertInFront() {
-    const front = (await device.currentApplication())?.packageId ?? null;
-    if (front !== ICONDO_PACKAGE) screen.fail("icondo_left", `前台已不是 iCondo（现在是 ${front ?? "无"}），已停止，避免误操作`);
+    let front = null;
+    const inFront = await screen.waitFor(async () => {
+      front = (await device.currentApplication())?.packageId ?? null;
+      return front === ICONDO_PACKAGE;
+    }, { timeoutMs: 2000 });
+    if (!inFront) screen.fail("icondo_left", `前台已不是 iCondo（现在是 ${front ?? "无"}），已停止，避免误操作`);
   }
 
   // The in-app back arrow: where the template was captured (facility,
@@ -209,13 +219,17 @@ export function createFlow({ screen, device, log, now = Date.now }) {
   async function enterTennis(y, { timeoutMs = 8000, gap } = {}) {
     const deadline = now() + timeoutMs;
     const height = screen.region("tennis-court").rect.height;
-    let at = y;
+    const near = (top) => ({ top: Math.max(LIST.top, top - 40), bottom: Math.min(LIST.bottom, top + height + 40) });
+    // Act only on what is ready: the card must be on screen where it was
+    // (a page popping back still slides it in; a tap then is ignored).
+    const ready = await screen.waitFor(async () => (await screen.scanY("tennis-court", near(y)))[0] ?? null, { timeoutMs: 3000 });
+    let at = ready ? ready.y : await findTennis();
     while (now() < deadline) {
       await screen.tapRect(tennisRect(at), "tennis-court", { gap });
       const tapped = now();
       const outcome = await screen.waitFor(async () => {
         if (await screen.is("tennis-page")) return "entered";
-        const [card] = await screen.scanY("tennis-court", { top: Math.max(LIST.top, at - 40), bottom: Math.min(LIST.bottom, at + height + 40) });
+        const [card] = await screen.scanY("tennis-court", near(at));
         if (now() - tapped < STILL_MS) return null;
         if (card) {
           at = card.y;
@@ -294,10 +308,20 @@ export function createFlow({ screen, device, log, now = Date.now }) {
     const today = dateOf(now());
     const cell = gridCellOf(task.date, today);
     if (!cell) screen.fail("date_off_grid", `${task.date} 不在今天（${today}）看到的两周里`);
-    // The grid may still be loading: two equal reads in a row.
-    const day = await screen.waitFor(() => readDay(cell), { timeoutMs: LOADING_MS, stable: 2 });
+    // What the page shows first may be from before its data arrived: wait
+    // for the day to be choosable, and call it closed only once it has not
+    // become so within DAY_OPEN_MS (on the device a grid read 40 ms after
+    // entering was taken as the answer).
+    const entered = now();
+    let day = await screen.waitFor(() => readDay(cell), { timeoutMs: LOADING_MS });
     if (!day) screen.fail("day_unreadable", `读不出 ${task.date} 那一格的状态`);
-    log.debug("book.day", { date: task.date, row: cell.row, col: cell.col, state: day });
+    if (day === "closed") {
+      day = (await screen.waitFor(async () => {
+        const seen = await readDay(cell);
+        return seen === "open" || seen === "selected" ? seen : null;
+      }, { timeoutMs: DAY_OPEN_MS })) ?? "closed";
+    }
+    log.debug("book.day", { date: task.date, row: cell.row, col: cell.col, state: day, ms: now() - entered });
     if (day === "closed") return { dayClosed: true };
     if (day === "open") {
       // Choosing a day twice chooses it still: a tap that did nothing is made again.
@@ -309,11 +333,20 @@ export function createFlow({ screen, device, log, now = Date.now }) {
       });
       if (!chosen) screen.fail("day_not_selected", `点了 ${task.date} 没有选中`);
     }
-    const slots = await screen.waitFor(readSlots, { timeoutMs: LOADING_MS, stable: 2 });
-    if (!slots) screen.fail("slots_unreadable", "时段区域一直在变化，读不稳");
+    // The slots reload after a day is chosen, and until they have the grid
+    // still shows the previous day's (on the device that read failed a grab
+    // whose slots were free). Wait for the wanted slots to be choosable;
+    // only if they are not within SLOTS_OPEN_MS are they taken.
+    const chosenAt = now();
+    const choosable = (states) => task.slots.every((hour) => states[hour] === "open" || states[hour] === "selected");
+    let slots = await screen.waitFor(async () => {
+      const states = await readSlots();
+      return choosable(states) ? states : null;
+    }, { timeoutMs: SLOTS_OPEN_MS });
+    slots ??= await readSlots();
     const taken = task.slots.filter((hour) => slots[hour] === "closed");
-    log.info("book.slots", { date: task.date, want: slotsLabel(task.slots), states: task.slots.map((h) => `${h}:${slots[h]}`).join(" ") });
-    if (taken.length) screen.fail("slot_unavailable", `${task.date} ${slotsLabel(task.slots)} 中 ${taken.map((h) => `${h}:00`).join("、")} 不可预定`);
+    log.info("book.slots", { date: task.date, want: slotsLabel(task.slots), states: task.slots.map((h) => `${h}:${slots[h]}`).join(" "), ms: now() - chosenAt });
+    if (taken.length) screen.fail("slot_unavailable", `${task.date} ${slotsLabel(task.slots)} 中 ${taken.map((h) => `${h}:00`).join("、")} 不可预定（等了 ${((now() - chosenAt) / 1000).toFixed(1)} 秒）`);
     for (const hour of task.slots) {
       if (slots[hour] === "selected") continue; // tapping a chosen slot would unchoose it
       await screen.tapRect(slotRect(hour), `slot ${hour}`);
@@ -343,25 +376,25 @@ export function createFlow({ screen, device, log, now = Date.now }) {
   async function cancelBooking(task) {
     await toFacility("active");
     const want = { day: Number(task.date.slice(8)), from: twelve(task.slots[0]), to: twelve(task.slots.at(-1) + 1) };
-    // Wait for the list's cancel buttons: the list loads over the network
-    // after the tab is tapped. None within the timeout is none.
+    // Wait for the booking's own card: the list loads over the network after
+    // the tab is tapped, and a card read wrong once (Vision) is read again.
+    // Not found within the timeout is not there.
     const started = now();
     let looks = 0;
-    const cards = (await screen.waitFor(async () => {
+    let seen = 0;
+    const target = await screen.waitFor(async () => {
       looks += 1;
-      const found = await screen.scanY("cancel", LIST);
-      return found.length ? found : null;
-    }, { timeoutMs: ACTIVE_LIST_MS })) ?? [];
-    log.debug("cancel.list", { found: cards.length, looks, ms: now() - started });
-    let target = null;
-    for (const { y } of cards) {
-      const card = await cardOf(y);
-      log.debug("cancel.card", { y, read: card.read });
-      if (card.day === want.day && card.from === want.from && card.to === want.to) {
-        target = y;
-        break;
+      const cards = await screen.scanY("cancel", LIST);
+      seen = Math.max(seen, cards.length);
+      for (const { y } of cards) {
+        const card = await cardOf(y);
+        log.debug("cancel.card", { y, read: card.read });
+        if (card.day === want.day && card.from === want.from && card.to === want.to) return { y };
       }
-    }
+      return null;
+    }, { timeoutMs: ACTIVE_LIST_MS, intervalMs: 100 }).then((found) => found?.y ?? null);
+    log.debug("cancel.list", { found: target !== null, cards: seen, looks, ms: now() - started });
+    const cards = { length: seen };
     if (target === null) screen.fail("cancel_not_found", `active 页里没找到 ${task.date} ${slotsLabel(task.slots)} 的可取消预订（${Math.round((now() - started) / 1000)} 秒内看了 ${looks} 次，找到 ${cards.length} 个 cancel）`);
     // The sheet covers the button as it slides up; a button still in place,
     // unmoved, means the tap did nothing and it is made again.

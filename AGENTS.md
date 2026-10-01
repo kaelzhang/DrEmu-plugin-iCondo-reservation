@@ -29,6 +29,7 @@
 - 所有面板 UI 用 Vite + Vue 3（`<script setup>`、Composition API），按 `docs/ARCHITECTURE.md` §面板渲染 的规则写：按切片订阅、局部更新，禁止整页刷新。
 - 控制脚本运行在无 DOM、无网络、无 npm 的沙箱里，`plugin/control.js`、`plugin/core/*.js`、`plugin/shared/*.js` 不得 import Node 模块或 npm 包。
 - 坐标永不自行取整（DrEmu 只在设备边界取整一次）。
+- **写或改任何「看屏幕再决定」的代码前，先读 `docs/FLOW.md` §读屏幕的原则，逐条自查**：否定结论是不是等到超时才下；是不是在等目标状态而不是「两次一致 / 固定延时」；动手前内容是否已就绪；这个点击的期望结果是什么、没出现怎么办；`tests/flow.test.js` 的「every response is late」用例是否仍绿。动过轮询间隔、超时、重试的改动，同样要过这一遍。
 - 沙箱里的 `toLocaleTimeString` 不认 24 小时制选项，时间一律用 `core/logger.js` 的 `clock()` 自己拼。
 - 版本号形如 `<manifest 版本>+<提交>`（未提交改动时带 `-dirty`），面板标题旁显示，用来确认设备跑的是哪一版。
 - 不要卸载再重装插件：卸载会清空插件存储（含设置）。
