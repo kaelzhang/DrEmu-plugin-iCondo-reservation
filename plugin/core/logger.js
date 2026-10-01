@@ -4,7 +4,12 @@
 // so the control script publishes that one line, never the whole log.
 export const LEVELS = Object.freeze(["debug", "info", "warn", "error"]);
 
-const clock = (at) => new Date(at).toLocaleTimeString("en-GB", { hour12: false });
+// Composed by hand: the sandbox's toLocaleTimeString ignores the 24-hour option.
+const two = (n) => String(n).padStart(2, "0");
+export function clock(at) {
+  const t = new Date(at);
+  return `${two(t.getHours())}:${two(t.getMinutes())}:${two(t.getSeconds())}`;
+}
 
 function describe(event, fields) {
   const detail = Object.entries(fields ?? {})
