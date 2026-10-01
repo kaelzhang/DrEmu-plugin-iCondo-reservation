@@ -9,10 +9,27 @@ import { PNG } from "pngjs";
 const DIR = new URL("../../screenshots/", import.meta.url);
 export const hasScreenshots = existsSync(new URL("tennis-court.png", DIR));
 
+const blank = () => ({ width: 720, height: 1280, data: Buffer.alloc(720 * 1280 * 4, 255) });
+
+// "home": no full screenshot of it exists, so a white screen with the two
+// regions that tell it apart pasted where they were captured.
+function home() {
+  const screen = blank();
+  for (const name of ["home", "facility"]) {
+    const { region } = JSON.parse(readFileSync(new URL(`${name}/capture.json`, DIR), "utf8"));
+    const crop = PNG.sync.read(readFileSync(new URL(`${name}/capture.png`, DIR)));
+    for (let y = 0; y < crop.height; y += 1) {
+      crop.data.copy(screen.data, ((region.top_left.y + y) * 720 + region.top_left.x) * 4, y * crop.width * 4, (y + 1) * crop.width * 4);
+    }
+  }
+  return screen;
+}
+
 const cache = new Map();
 function picture(name) {
   if (!cache.has(name)) {
-    if (name === "blank") cache.set(name, { width: 720, height: 1280, data: Buffer.alloc(720 * 1280 * 4, 255) });
+    if (name === "blank") cache.set(name, blank());
+    else if (name === "home") cache.set(name, home());
     else cache.set(name, PNG.sync.read(readFileSync(new URL(`${name}.png`, DIR))));
   }
   return cache.get(name);
@@ -20,12 +37,16 @@ function picture(name) {
 
 const inside = (p, r) => p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y < r.y + r.height;
 
-// `routes[screen]` is a list of { on: "tap" | "swipe", rect?, to } — the first
-// whose rect holds the tap (or any swipe) moves the screen to `to`.
+// `routes[screen]` is a list of { on: "tap" | "swipe", rect?, to, via? } —
+// the first whose rect holds the tap (or any swipe) moves the screen to `to`.
+// `via: { screen, ms }` shows `screen` for that long first: a page
+// transition, as the device shows it mid-animation.
 export function createFakeIcondo({ screen, routes, digits = () => [] }) {
-  const state = { screen, taps: [], swipes: [], app: "com.icondo" };
+  const state = { screen, taps: [], swipes: [], app: "com.icondo", transition: null };
   function image(rect) {
-    const png = picture(state.screen);
+    let shown = state.screen;
+    if (state.transition && Date.now() < state.transition.until) shown = state.transition.screen;
+    const png = picture(shown);
     const bgra = new Uint8Array(rect.width * rect.height * 4);
     for (let y = 0; y < rect.height; y += 1) {
       for (let x = 0; x < rect.width; x += 1) {
@@ -41,7 +62,9 @@ export function createFakeIcondo({ screen, routes, digits = () => [] }) {
   }
   function follow(kind, point) {
     const route = (routes[state.screen] ?? []).find((r) => r.on === kind && (!r.rect || inside(point, r.rect)));
-    if (route) state.screen = route.to;
+    if (!route) return;
+    state.screen = route.to;
+    if (route.via) state.transition = { screen: route.via.screen, until: Date.now() + route.via.ms };
   }
   const device = {
     async capturePage(rect) {

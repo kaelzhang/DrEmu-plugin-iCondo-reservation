@@ -22,7 +22,10 @@ const BACK = r(20, 85, 70, 60);
 const CARD = r(20, 1020, 680, 140);
 const ACTIVE_TAB = r(232, 192, 75, 89);
 const BOOK_TAB = r(58, 192, 64, 90);
+const FACILITY_ICON = r(57, 187, 62, 63);
 const ROUTES = (tennis = "tennis-court-next") => ({
+  // The facility page takes a few frames to appear: what is seen meanwhile is no page at all.
+  home: [{ on: "tap", rect: FACILITY_ICON, to: "facility-top", via: { screen: "blank", ms: 1500 } }],
   "facility-top": [{ on: "swipe", to: "facility-bottom" }, { on: "tap", rect: ACTIVE_TAB, to: "active" }],
   "facility-bottom": [{ on: "tap", rect: CARD, to: tennis }, { on: "tap", rect: ACTIVE_TAB, to: "active" }],
   "tennis-court": [
@@ -46,6 +49,9 @@ function digits(screen, rect) {
   if (rect.y === 492) return ["02", "00", "03", "00"];
   return [];
 }
+
+// The same routes with every tap's page pushed in: `ms` of a blank frame first.
+const PUSHED = (ms) => Object.fromEntries(Object.entries(ROUTES()).map(([from, routes]) => [from, routes.map((route) => (route.on === "tap" ? { ...route, via: { screen: "blank", ms } } : route))]));
 
 function run(screen, routes = ROUTES()) {
   const fake = createFakeIcondo({ screen, routes, digits });
@@ -79,6 +85,14 @@ test("a test job books Friday 14:00 from the facility list and cancels it again"
     "active", // cancel
     "cancel-confirm-bottom", // yes
   ]);
+});
+
+test("the same test job goes through when every tapped page is pushed in over 400 ms", { skip, timeout: 60_000 }, async () => {
+  const { fake, flow, screen } = run("facility-top", PUSHED(400));
+  const job = createJob({ flow, screen, log: quiet, booking: { info() {} }, update() {}, now });
+  await job({ kind: "test", date: "2026-10-02", slots: [14] });
+  assert.equal(fake.state.screen, "active");
+  assert.equal(fake.state.taps.length, 8, JSON.stringify(fake.state.taps.map((t) => t.screen)));
 });
 
 test("an open day and an open slot are tapped once each before next", { skip, timeout: 30_000 }, async () => {
@@ -118,6 +132,13 @@ test("an unknown screen without a back arrow stops the flow: the system back is 
   const { fake, flow } = run("blank");
   await assert.rejects(flow.toFacility("book"), failure("unknown_screen"));
   assert.deepEqual(fake.state.taps, []);
+});
+
+test("from home, a page still animating in is waited for, not taken for an unknown screen", { skip, timeout: 30_000 }, async () => {
+  const { fake, flow } = run("home");
+  await flow.toFacility("book");
+  assert.equal(fake.state.screen, "facility-top");
+  assert.deepEqual(fake.state.taps.map((t) => t.screen), ["home"], "the facility icon, once; no back of any kind");
 });
 
 test("iCondo leaving the front stops the flow", { skip }, async () => {

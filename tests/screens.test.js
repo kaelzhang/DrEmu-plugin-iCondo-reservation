@@ -36,8 +36,10 @@ test("each screenshot is recognised as its page", { skip }, async () => {
 });
 
 test("next is lit only once a slot is chosen", { skip }, async () => {
-  assert.equal(await on("tennis-court-next").screen.is("next"), true);
-  assert.equal(await on("tennis-court").screen.is("next"), false);
+  assert.equal(await on("tennis-court-next").screen.is("next", { image: "enabled" }), true);
+  assert.equal(await on("tennis-court").screen.is("next", { image: "enabled" }), false);
+  assert.equal((await on("tennis-court").screen.score("next")).image, "disabled");
+  assert.equal((await on("tennis-court-next").screen.score("next")).image, "enabled");
 });
 
 test("every day and slot reads as the screenshot shows it", { skip }, async () => {

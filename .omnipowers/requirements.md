@@ -32,3 +32,11 @@
   - evidence: flow.js goBack 在已知内层页找不到 back 时点 system-back
 - R16 — 「请注意，你不要点击 system-back 导致关闭 app 了」 (stated 2026-10-01)
   - evidence: goBack 只在 INNER_PAGES 上用 system-back，首页/未知画面报 unknown_screen；tests/flow.test.js「system back is never tapped there (R16)」
+- R17 — 「你不可以在 tap Region 之后，就立即做判断，你需要 waitFor」 (stated 2026-10-01)
+  - evidence: flow.js 每次点击 / 滑动后 waitFor（knownPage、waitForScan、waitForRegion、选中状态）；tests/flow.test.js「from home, a page still animating in…」在旧代码上红、新代码上绿
+- R18 — 「因为在 app 里面，很多下一个页面是需要推进来的」 (stated 2026-10-01)
+  - evidence: fake-icondo 的 via 过渡；tests/flow.test.js「every tapped page is pushed in over 400 ms」端到端通过
+- R19 — 「不是两次读取，而是默认情况下，你需要 waitFor + timeout，而不是直接检查两次」 (stated 2026-10-01)
+  - evidence: 去掉点击后的连续两次读取，统一 waitFor + timeout；仅预订页首次读日期 / 时段状态保留两次一致（数据加载），写入 docs/FLOW.md 并已向 Kael 说明
+- R20 — 「region 更新：next: capture -> enabled，增加了 disabled 的状态」 (stated 2026-10-01)
+  - evidence: plugin/asset-list.json next: [enabled, disabled]；flow.js 等 enabled；tests/screens.test.js 两张截图分别认出 enabled / disabled

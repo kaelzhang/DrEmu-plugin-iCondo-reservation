@@ -2,11 +2,16 @@
 // are, getting to the facility page, booking on the tennis-court page, and
 // cancelling a booking from the active tab. Every step waits for what it
 // expects to see and fails with a stable reason when it does not appear.
+//
+// Nothing is judged right after a tap: iCondo pushes most pages in with an
+// animation, and a frame mid-push is no page at all. After every tap or
+// swipe, what should come next is waited for, with a timeout (Kael: 「你不可以
+// 在 tap Region 之后，就立即做判断，你需要 waitFor」, 「默认情况下，你需要
+// waitFor + timeout」).
 import { DAYS_AREA, SLOTS_AREA, dayRect, dayState, slotRect, slotState } from "./court.js";
 import { dateOf, gridCellOf } from "./calendar.js";
 import { slotsLabel } from "./task.js";
 import { ICONDO_PACKAGE } from "./icondo.js";
-import { sleep } from "./timing.js";
 
 // The facility list scrolls between these; the tennis-court card is found in it.
 const LIST = { top: 300, bottom: 1180 };
@@ -32,6 +37,17 @@ export function createFlow({ screen, device, log, now = Date.now }) {
     // so home is told by its own logo as well.
     if ((await screen.is("home")) && (await screen.is("facility"))) return "home";
     return "unknown";
+  }
+
+  // Wait for a page we know; "unknown" when none shows within `timeoutMs`.
+  // With `leaving`, that page does not count either: the tap that leaves it
+  // may not have moved anything yet.
+  async function knownPage({ timeoutMs = 4000, leaving = null } = {}) {
+    const page = await screen.waitFor(async () => {
+      const seen = await where();
+      return seen === "unknown" || seen === leaving ? null : seen;
+    }, { timeoutMs, intervalMs: 150 });
+    return page ?? "unknown";
   }
 
   // The facility page's tab: "book" | "active" | null.
@@ -67,9 +83,11 @@ export function createFlow({ screen, device, log, now = Date.now }) {
 
   // ---- getting to the facility page ---------------------------------------
   async function toFacility(tab = "book") {
+    let leaving = null;
     for (let step = 0; step < 10; step += 1) {
       await assertInFront();
-      const page = await where();
+      const page = await knownPage({ leaving, timeoutMs: leaving ? 6000 : 4000 });
+      leaving = null;
       if (page === "facility") {
         if ((await facilityTab()) !== tab) {
           await screen.tapRegion(`${tab}-tab`);
@@ -80,7 +98,8 @@ export function createFlow({ screen, device, log, now = Date.now }) {
       log.debug("nav.step", { page, to: `facility/${tab}` });
       if (page === "home") await screen.tapRegion("facility");
       else await goBack(page);
-      await screen.waitFor(async () => (await where()) !== page || null, { timeoutMs: 4000, intervalMs: 200 });
+      // The next step waits for a known page other than this one.
+      leaving = page;
     }
     screen.fail("facility_unreachable", "10 步之内没能回到 facility 页");
   }
@@ -90,12 +109,18 @@ export function createFlow({ screen, device, log, now = Date.now }) {
   async function showTennis() {
     await toFacility("book");
     for (let swipes = 0; swipes <= 4; swipes += 1) {
-      const [found] = await screen.scanY("tennis-court", LIST);
-      if (found) return found.y;
+      const y = await waitForScan("tennis-court", LIST);
+      if (y !== null) return y;
       await screen.swipe(LIST_SWIPE.from, LIST_SWIPE.to, "facility-list");
-      await sleep(700);
     }
     screen.fail("tennis_not_found", "facility 列表滑到底也没找到 tennis court");
+  }
+
+  // Wait for `name` to show up going down a list: the first place it is
+  // found, or null when it has not within `timeoutMs`.
+  async function waitForScan(name, area, timeoutMs = 2000) {
+    const found = await screen.waitFor(async () => (await screen.scanY(name, area))[0] ?? null, { timeoutMs, intervalMs: 150 });
+    return found?.y ?? null;
   }
 
   const tennisRect = (y) => ({ x: CARD.x, y, width: CARD.width, height: screen.region("tennis-court").rect.height });
@@ -134,7 +159,7 @@ export function createFlow({ screen, device, log, now = Date.now }) {
     if (day === "closed") return { dayClosed: true };
     if (day === "open") {
       await screen.tapRect(dayRect(cell), `day ${task.date}`);
-      if ((await screen.waitFor(async () => (await readDay(cell)) === "selected" || null, { timeoutMs: 3000, intervalMs: 120, stable: 2 })) === null) {
+      if ((await screen.waitFor(async () => (await readDay(cell)) === "selected" || null, { timeoutMs: 3000, intervalMs: 120 })) === null) {
         screen.fail("day_not_selected", `点了 ${task.date} 没有选中`);
       }
     }
@@ -146,10 +171,10 @@ export function createFlow({ screen, device, log, now = Date.now }) {
     for (const hour of task.slots) {
       if (slots[hour] === "selected") continue; // tapping a chosen slot would unchoose it
       await screen.tapRect(slotRect(hour), `slot ${hour}`);
-      const chosen = await screen.waitFor(async () => (await readSlots())[hour] === "selected" || null, { timeoutMs: 3000, intervalMs: 120, stable: 2 });
+      const chosen = await screen.waitFor(async () => (await readSlots())[hour] === "selected" || null, { timeoutMs: 3000, intervalMs: 120 });
       if (!chosen) screen.fail("slot_not_selected", `点了 ${hour}:00 没有选中（可能刚被别人订走）`);
     }
-    if (!(await screen.waitForRegion("next", { timeoutMs: 5000 }))) screen.fail("next_not_lit", "选好时段后 next 没有亮起");
+    if (!(await screen.waitForRegion("next", { image: "enabled", timeoutMs: 5000 }))) screen.fail("next_not_lit", "选好时段后 next 没有亮起");
     await screen.tapRegion("next");
     if (!(await screen.waitForRegion("agree", { timeoutMs: 10_000 }))) screen.fail("agree_missing", "点 next 后没有出现同意条款");
     await screen.tapRegion("agree");
@@ -173,9 +198,12 @@ export function createFlow({ screen, device, log, now = Date.now }) {
 
   async function cancelBooking(task) {
     await toFacility("active");
-    await sleep(800);
     const want = { day: Number(task.date.slice(8)), from: twelve(task.slots[0]), to: twelve(task.slots.at(-1) + 1) };
-    const cards = await screen.scanY("cancel", LIST);
+    // Wait for the list's cancel buttons to show; none within the timeout is none.
+    const cards = (await screen.waitFor(async () => {
+      const found = await screen.scanY("cancel", LIST);
+      return found.length ? found : null;
+    }, { timeoutMs: 3000, intervalMs: 150 })) ?? [];
     let target = null;
     for (const { y } of cards) {
       const card = await cardOf(y);
@@ -187,18 +215,17 @@ export function createFlow({ screen, device, log, now = Date.now }) {
     }
     if (target === null) screen.fail("cancel_not_found", `active 页里没找到 ${task.date} ${slotsLabel(task.slots)} 的可取消预订（看到 ${cards.length} 个 cancel）`);
     await screen.tapRect({ ...screen.region("cancel").rect, y: target }, "cancel");
-    await sleep(800);
+    // The sheet slides up from the bottom: each look waits for yes to show.
     for (let swipes = 0; swipes <= 5; swipes += 1) {
-      const [yes] = await screen.scanY("cancel-yes", { top: 500, bottom: 1180 });
-      if (yes) {
-        await screen.tapRect({ ...screen.region("cancel-yes").rect, y: yes.y }, "cancel-yes");
-        const back = await screen.waitFor(async () => (await facilityTab()) === "active" || null, { timeoutMs: 10_000, intervalMs: 200, stable: 2 });
+      const yes = await waitForScan("cancel-yes", { top: 500, bottom: 1180 });
+      if (yes !== null) {
+        await screen.tapRect({ ...screen.region("cancel-yes").rect, y: yes }, "cancel-yes");
+        const back = await screen.waitFor(async () => (await facilityTab()) === "active" || null, { timeoutMs: 10_000, intervalMs: 200 });
         if (!back) screen.fail("cancel_unconfirmed", "点了 yes 之后没有回到 active 页");
         log.info("cancel.success", { date: task.date, slots: slotsLabel(task.slots) });
         return;
       }
       await screen.swipe(SHEET_SWIPE.from, SHEET_SWIPE.to, "cancel-sheet");
-      await sleep(600);
     }
     await goBack("sheet");
     screen.fail("cancel_yes_missing", "取消确认面板里滑到底也没找到 yes");

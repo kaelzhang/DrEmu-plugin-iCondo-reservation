@@ -8,7 +8,7 @@
     "tennis-court": { "use": "match", "images": ["capture"] },
     "back": { "use": "match", "images": ["capture"] },
     "system-back": { "use": "rect" },
-    "next": { "use": "match", "images": ["capture"], "colour": true },
+    "next": { "use": "match", "images": ["enabled", "disabled"], "colour": true },
     "agree": { "use": "match", "images": ["capture"] },
     "confirm": { "use": "match", "images": ["capture"] },
     "calendar": { "use": "match", "images": ["capture"] },
