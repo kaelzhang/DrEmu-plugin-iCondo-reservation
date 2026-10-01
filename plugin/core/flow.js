@@ -268,24 +268,35 @@ export function createFlow({ screen, device, log, now = Date.now }) {
     if (target === null) screen.fail("cancel_not_found", `active 页里没找到 ${task.date} ${slotsLabel(task.slots)} 的可取消预订（${Math.round((now() - started) / 1000)} 秒内看了 ${looks} 次，找到 ${cards.length} 个 cancel）`);
     await screen.tapRect({ ...screen.region("cancel").rect, y: target }, "cancel");
     // The sheet slides up from the bottom; yes sits below its first screen.
-    // Look, and swipe up at once when it is not there (as for the list).
+    // Look, and swipe up at once when it is not there (as for the list). A
+    // tap on a sheet still gliding only stops it, so yes is tapped once a
+    // second look finds it in the same place; and tapped again while it is
+    // still there after LEAVE_MS (a tap that worked closes the sheet, so a
+    // yes still in place means the tap did nothing).
     const deadline = now() + SHEET_MS;
-    for (let swipes = 0; now() < deadline;) {
+    let swipes = 0;
+    let last = null;
+    while (now() < deadline) {
       const [yes] = await screen.scanY("cancel-yes", { top: 500, bottom: 1180 });
-      if (yes) {
+      if (yes && last !== null && Math.abs(yes.y - last) <= 2) {
         await screen.tapRect({ ...screen.region("cancel-yes").rect, y: yes.y }, "cancel-yes");
-        const back = await screen.waitFor(async () => (await facilityTab()) === "active" || null, { timeoutMs: 10_000, intervalMs: 200 });
-        if (!back) screen.fail("cancel_unconfirmed", "点了 yes 之后没有回到 active 页");
-        log.info("cancel.success", { date: task.date, slots: slotsLabel(task.slots) });
-        return;
+        const back = await screen.waitFor(async () => (await facilityTab()) === "active" || null, { timeoutMs: LEAVE_MS, intervalMs: 200 });
+        if (back) {
+          log.info("cancel.success", { date: task.date, slots: slotsLabel(task.slots) });
+          return;
+        }
+        log.debug("tap.again", { at: "cancel-yes" });
+        last = null;
+        continue;
       }
-      if (swipes < MAX_SHEET_SWIPES) {
+      last = yes ? yes.y : null;
+      if (!yes && swipes < MAX_SHEET_SWIPES) {
         await screen.swipe(SHEET_SWIPE.from, SHEET_SWIPE.to, "cancel-sheet");
         swipes += 1;
       }
     }
     await goBack("sheet");
-    screen.fail("cancel_yes_missing", "取消确认面板里滑到底也没找到 yes");
+    screen.fail("cancel_unconfirmed", "取消确认面板里的 yes 点不下去，或一直没找到 yes");
   }
 
   return Object.freeze({ where, facilityTab, toFacility, showTennis, enterTennis, bookHere, cancelBooking, goBack, backShown });

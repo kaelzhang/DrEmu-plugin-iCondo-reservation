@@ -149,6 +149,17 @@ test("the cancel sheet is swiped up at once to reach yes, without waiting on its
   assert.ok(Date.now() - started < 1500, `took ${Date.now() - started} ms`);
 });
 
+test("a yes tap the sheet swallowed (still gliding) is made again while yes is still there", { skip, timeout: 30_000 }, async () => {
+  const routes = ROUTES();
+  routes["cancel-confirm-bottom"] = [{ on: "tap", rect: r(380, 1024, 290, 120), to: "active", ignore: 1 }];
+  const { fake, flow } = run("active", routes);
+  const started = Date.now();
+  await flow.cancelBooking({ date: "2026-10-02", slots: [14] });
+  assert.equal(fake.state.screen, "active");
+  assert.deepEqual(fake.state.taps.map((t) => t.screen), ["active", "cancel-confirm-bottom", "cancel-confirm-bottom"]);
+  assert.ok(Date.now() - started < 5000, `took ${Date.now() - started} ms`);
+});
+
 test("a booking not on the active tab is not cancelled", { skip, timeout: 30_000 }, async () => {
   const { fake, flow } = run("active");
   await assert.rejects(flow.cancelBooking({ date: "2026-10-06", slots: [8, 9] }), failure("cancel_not_found"));
