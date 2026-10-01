@@ -4,5 +4,6 @@ dist/
 .dremu-devkit/
 
 screenshots/
+prompts/
 .dist-staging/
 .dist-retired/
