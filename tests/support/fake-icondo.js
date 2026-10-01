@@ -50,7 +50,9 @@ const inside = (p, r) => p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y 
 // the first whose rect holds the tap (or any swipe) moves the screen to `to`.
 // `via: { screen, ms }` shows `screen` for that long first: a page
 // transition, as the device shows it mid-animation. `ignore: n` lets the
-// first n matching taps do nothing (a page not yet taking input).
+// first n matching taps do nothing (a page not yet taking input); `times: n`
+// lets the route apply to the first n matching taps only, later ones fall
+// through to the next route.
 export function createFakeIcondo({ screen, routes, digits = () => [] }) {
   const state = { screen, taps: [], swipes: [], app: "com.icondo", transition: null };
   function image(rect) {
@@ -71,8 +73,9 @@ export function createFakeIcondo({ screen, routes, digits = () => [] }) {
     return { getSize: () => ({ width: rect.width, height: rect.height }), toBitmap: () => bgra };
   }
   function follow(kind, point) {
-    const route = (routes[state.screen] ?? []).find((r) => r.on === kind && (!r.rect || inside(point, r.rect)));
+    const route = (routes[state.screen] ?? []).find((r) => r.on === kind && (!r.rect || inside(point, r.rect)) && r.times !== 0);
     if (!route) return;
+    if (route.times > 0) route.times -= 1;
     if (route.ignore > 0) {
       route.ignore -= 1;
       return;
