@@ -122,6 +122,24 @@ test("a day that has not opened is reported, not tapped", { skip }, async () => 
   assert.deepEqual(fake.state.taps, []);
 });
 
+test("the active list arriving 4 s after the tab is waited for, and the booking is cancelled", { skip, timeout: 60_000 }, async () => {
+  const routes = ROUTES();
+  routes["facility-bottom"] = routes["facility-bottom"].map((r) => (r.to === "active" ? { ...r, via: { screen: "active-loading", ms: 4000 } } : r));
+  const { fake, flow } = run("facility-bottom", routes);
+  await flow.cancelBooking({ date: "2026-10-02", slots: [14] });
+  assert.equal(fake.state.screen, "active");
+  assert.deepEqual(fake.state.taps.map((t) => t.screen), ["facility-bottom", "active", "cancel-confirm-bottom"]);
+});
+
+test("an ignored tap on the active tab is made again, and the list is only looked at once the tab is on", { skip, timeout: 60_000 }, async () => {
+  const routes = ROUTES();
+  routes["facility-bottom"] = routes["facility-bottom"].map((r) => (r.to === "active" ? { ...r, ignore: 1 } : r));
+  const { fake, flow } = run("facility-bottom", routes);
+  await flow.cancelBooking({ date: "2026-10-02", slots: [14] });
+  assert.equal(fake.state.screen, "active");
+  assert.deepEqual(fake.state.taps.map((t) => t.screen), ["facility-bottom", "facility-bottom", "active", "cancel-confirm-bottom"]);
+});
+
 test("a booking not on the active tab is not cancelled", { skip, timeout: 30_000 }, async () => {
   const { fake, flow } = run("active");
   await assert.rejects(flow.cancelBooking({ date: "2026-10-06", slots: [8, 9] }), failure("cancel_not_found"));
@@ -139,6 +157,35 @@ test("from home, a page still animating in is waited for, not taken for an unkno
   await flow.toFacility("book");
   assert.equal(fake.state.screen, "facility-top");
   assert.deepEqual(fake.state.taps.map((t) => t.screen), ["home"], "the facility icon, once; no back of any kind");
+});
+
+test("a back tap the page ignored is tried again within seconds, and the page is still named", { skip, timeout: 30_000 }, async () => {
+  const routes = ROUTES();
+  routes["book-success"] = [{ on: "tap", rect: BACK, to: "facility-bottom", ignore: 1 }];
+  const { fake, flow } = run("book-success", routes);
+  const started = Date.now();
+  await flow.toFacility("book");
+  assert.equal(fake.state.screen, "facility-bottom");
+  assert.deepEqual(fake.state.taps.map((t) => t.screen), ["book-success", "book-success"]);
+  assert.ok(Date.now() - started < 4000, `took ${Date.now() - started} ms`);
+});
+
+test("an ignored tap on next or agree is made again; the booking goes through with one confirm", { skip, timeout: 30_000 }, async () => {
+  const routes = ROUTES();
+  routes["tennis-court-next"] = [{ on: "tap", rect: r(260, 1106, 207, 63), to: "agree", ignore: 1 }];
+  routes.agree = [{ on: "tap", rect: r(10, 1111, 698, 51), to: "confirm", ignore: 1 }];
+  const { fake, flow } = run("tennis-court-next", routes);
+  assert.deepEqual(await flow.bookHere({ date: "2026-10-02", slots: [14] }), { booked: true });
+  assert.deepEqual(fake.state.taps.map((t) => t.screen), ["tennis-court-next", "tennis-court-next", "agree", "agree", "confirm"]);
+});
+
+test("on the book tab the list is swiped at once and tennis court looked for right after (R23)", { skip, timeout: 30_000 }, async () => {
+  const { fake, flow } = run("facility-top");
+  const started = Date.now();
+  const y = await flow.showTennis();
+  assert.ok(Math.abs(y - 1031) <= 2, `y ${y}`);
+  assert.equal(fake.state.swipes.length, 1);
+  assert.ok(Date.now() - started < 1500, `took ${Date.now() - started} ms`);
 });
 
 test("iCondo leaving the front stops the flow", { skip }, async () => {

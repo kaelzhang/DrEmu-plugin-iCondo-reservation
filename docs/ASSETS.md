@@ -24,7 +24,9 @@
 | `calendar` | 146,1091 54×58 | capture | 成功页 add to calendar 图标 | 看到它才算预订成功 |
 | `cancel-yes` | 464,1059 132×59 | capture | 取消 sheet 底部的 yes | 在 sheet 里纵向扫描，找不到就上滑 |
 
-易混：首页的 `facility` 图标和设施页选中的 `book` 标签是同一个青色烧烤架、位置几乎相同，所以首页必须 `home` 和 `facility` 同时匹配。
+易混：
+- 首页的 `facility` 图标和设施页选中的 `book` 标签是同一个青色烧烤架、位置几乎相同，所以首页必须 `home` 和 `facility` 同时匹配。
+- 灭着的 `active-tab` 对 `on` 模板的 SSIM 有 0.81、灭着的 `book-tab` 对 `on` 有 0.75——多模板区域判状态必须比所有模板取最像的（`screen.is(name, { image })` 就是这样做的），不能只看一个模板过没过阈值。
 
 ## 裁剪（`plugin/asset-list.json` 的 `crops`）
 

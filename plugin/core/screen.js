@@ -82,10 +82,12 @@ export function createScreen({ device, assets, signal, log, random = Math.random
     capture,
     score,
 
-    // Whether the region shows one of its templates (or `image` only).
+    // Whether the region shows one of its templates — or, with `image`, that
+    // one: it must also look more like `image` than like the region's other
+    // templates (a tab's "on" template still scores 0.81 on the tab off).
     async is(name, { image, threshold = MATCH, dx, dy } = {}) {
-      const best = await score(name, { dx, dy, ...(image ? { images: [image] } : {}) });
-      return best.score >= threshold;
+      const best = await score(name, { dx, dy });
+      return best.score >= threshold && (!image || best.image === image);
     },
 
     // Wait until `check()` returns a truthy value `stable` times in a row
@@ -109,11 +111,12 @@ export function createScreen({ device, assets, signal, log, random = Math.random
 
     // Wait for a region's template to appear; seen once, it counts as there
     // until it falls under STAY (dialogs animate: 1.000 then 0.79).
+    // With `image`, it must look more like that than like the region's other templates.
     async waitForRegion(name, { timeoutMs, image, stable = 1 }) {
       let seen = false;
       return screen.waitFor(async () => {
-        const best = await score(name, image ? { images: [image] } : {});
-        seen = best.score >= (seen ? STAY : MATCH);
+        const best = await score(name);
+        seen = best.score >= (seen ? STAY : MATCH) && (!image || best.image === image);
         return seen ? best.image : null;
       }, { timeoutMs, stable });
     },

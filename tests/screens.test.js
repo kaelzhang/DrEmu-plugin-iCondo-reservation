@@ -35,6 +35,15 @@ test("each screenshot is recognised as its page", { skip }, async () => {
   assert.equal(await on("facility-top").flow.facilityTab(), "book");
 });
 
+test("a tab counts as on only when it looks more like on than off", { skip }, async () => {
+  for (const page of ["facility-top", "facility-bottom"]) {
+    assert.equal(await on(page).screen.is("active-tab", { image: "on" }), false, `${page}: active is off there (its on template still scores 0.81)`);
+    assert.equal(await on(page).screen.is("book-tab", { image: "on" }), true, page);
+  }
+  assert.equal(await on("active").screen.is("active-tab", { image: "on" }), true);
+  assert.equal(await on("active").screen.is("book-tab", { image: "on" }), false);
+});
+
 test("next is lit only once a slot is chosen", { skip }, async () => {
   assert.equal(await on("tennis-court-next").screen.is("next", { image: "enabled" }), true);
   assert.equal(await on("tennis-court").screen.is("next", { image: "enabled" }), false);

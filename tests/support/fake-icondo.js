@@ -25,11 +25,20 @@ function home() {
   return screen;
 }
 
+// "active-loading": the active tab before its list has arrived — active.png
+// with everything below the tab bar painted the page's grey.
+function activeLoading() {
+  const screen = PNG.sync.read(readFileSync(new URL("active.png", DIR)));
+  for (let i = 300 * 720 * 4; i < 1180 * 720 * 4; i += 4) screen.data.fill(0xf1, i, i + 3);
+  return screen;
+}
+
 const cache = new Map();
 function picture(name) {
   if (!cache.has(name)) {
     if (name === "blank") cache.set(name, blank());
     else if (name === "home") cache.set(name, home());
+    else if (name === "active-loading") cache.set(name, activeLoading());
     else cache.set(name, PNG.sync.read(readFileSync(new URL(`${name}.png`, DIR))));
   }
   return cache.get(name);
@@ -40,7 +49,8 @@ const inside = (p, r) => p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y 
 // `routes[screen]` is a list of { on: "tap" | "swipe", rect?, to, via? } —
 // the first whose rect holds the tap (or any swipe) moves the screen to `to`.
 // `via: { screen, ms }` shows `screen` for that long first: a page
-// transition, as the device shows it mid-animation.
+// transition, as the device shows it mid-animation. `ignore: n` lets the
+// first n matching taps do nothing (a page not yet taking input).
 export function createFakeIcondo({ screen, routes, digits = () => [] }) {
   const state = { screen, taps: [], swipes: [], app: "com.icondo", transition: null };
   function image(rect) {
@@ -63,6 +73,10 @@ export function createFakeIcondo({ screen, routes, digits = () => [] }) {
   function follow(kind, point) {
     const route = (routes[state.screen] ?? []).find((r) => r.on === kind && (!r.rect || inside(point, r.rect)));
     if (!route) return;
+    if (route.ignore > 0) {
+      route.ignore -= 1;
+      return;
+    }
     state.screen = route.to;
     if (route.via) state.transition = { screen: route.via.screen, until: Date.now() + route.via.ms };
   }

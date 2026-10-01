@@ -42,3 +42,7 @@
   - evidence: plugin/asset-list.json next: [enabled, disabled]；flow.js 等 enabled；tests/screens.test.js 两张截图分别认出 enabled / disabled
 - R21 — 「你有把相关的背景知识，需求说明都落档吗」「也就是未来如果有其他 agent 接手，能够直接通过当前项目继续」 (stated 2026-10-01; verify by: 不依赖 prompts/、screenshots/ 与会话记忆，仅凭仓库文档即可理解需求、素材、现状与下一步)
   - evidence: docs/REQUIREMENTS.md 覆盖原文全部要点与 Kael 的裁定；docs/ASSETS.md 区域 / 裁剪 / 截图 / 坐标与颜色 / 重新采集；docs/STATUS.md 现状与下一步；docs/ARCHITECTURE.md §运行与排查（环境、日志、平台差异）；AGENTS.md 入口表全部指到
+- R22 — 「你最好不要使用延迟等待，然后做 match 的方式，等待一个内容 ready，而是应当使用 waitFor。因为你的所谓延迟等待，经常是不靠谱的，你根本不知道在一些边缘情况下，你应当等待多久」 (stated 2026-10-01)
+  - evidence: plugin/core 中不再有「延时后判断」：剩余的 sleep / wait 只用于等到某时刻、30 秒保活、让出执行权、点击间隔、waitFor 轮询；docs/FLOW.md 记录规则
+- R23 — 「你只要看到 book-tab 了，你就可以尝试 swipe up 了，并且立即开始尝试检查 tennis-court 是否出现，因为哪怕列表还没有完全 ready，你也是可以尝试滚动的」 (stated 2026-10-01)
+  - evidence: flow.js showTennis 认出 book 标签后立即扫 / 滑 / 再扫；tests/flow.test.js「swiped at once … (R23)」旧代码 2.1 s 红、新代码绿
