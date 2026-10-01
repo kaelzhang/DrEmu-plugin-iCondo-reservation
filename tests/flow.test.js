@@ -229,6 +229,17 @@ test("an ignored tap on the day or on cancel is made again within a second", { s
   assert.ok(Date.now() - started < 2500, `cancel: ${Date.now() - started} ms`);
 });
 
+test("a tap on the tennis-court card the list swallowed (still gliding) is made again within a second", { skip, timeout: 30_000 }, async () => {
+  const routes = ROUTES();
+  routes["facility-bottom"] = routes["facility-bottom"].map((route) => (route.rect === CARD ? { ...route, ignore: 1 } : route));
+  const { fake, flow } = run("facility-bottom", routes);
+  const ms = await flow.enterTennis(1031);
+  assert.notEqual(ms, null, "the booking page was reached");
+  assert.equal(fake.state.screen, "tennis-court-next");
+  assert.deepEqual(fake.state.taps.map((t) => t.screen), ["facility-bottom", "facility-bottom"]);
+  assert.ok(ms < 1500, `${ms} ms`);
+});
+
 test("iCondo leaving the front stops the flow", { skip }, async () => {
   const { fake, flow } = run("facility-top");
   fake.state.app = "com.android.launcher";

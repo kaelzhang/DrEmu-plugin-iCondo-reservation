@@ -159,27 +159,61 @@ export function createFlow({ screen, device, log, now = Date.now }) {
     await toFacility("book");
     const deadline = now() + SHOW_TENNIS_MS;
     let swipes = 0;
-    let last = null;
+    let swiping = null; // the swipe gesture in flight
+    let swipeEnded = -Infinity;
     while (now() < deadline) {
+      const lookedAt = now();
       const [found] = await screen.scanY("tennis-court", LIST);
-      if (found && last !== null && Math.abs(found.y - last) <= 2) return found.y;
-      last = found ? found.y : null;
-      if (!found && swipes < MAX_LIST_SWIPES) {
-        await screen.swipe(LIST_SWIPE.from, LIST_SWIPE.to, "facility-list");
+      if (found && !swiping) return found.y;
+      if (found) {
+        // Seen mid-swipe: let the gesture end (a tap must not cut into it),
+        // then take where the card is now. enterTennis taps until it works.
+        await swiping;
+        swiping = null;
+        const [now] = await screen.scanY("tennis-court", LIST);
+        if (now) return now.y;
+        continue;
+      }
+      // Swipe again only once a look taken after the last swipe ended saw nothing.
+      if (swipes < MAX_LIST_SWIPES && !swiping && lookedAt >= swipeEnded) {
+        // Keep looking while the list scrolls (Kael: 「一边滚动，一边 waitFor
+        // tennis-court」).
+        swiping = screen.swipe(LIST_SWIPE.from, LIST_SWIPE.to, "facility-list").finally(() => {
+          swiping = null;
+          swipeEnded = now();
+        });
         swipes += 1;
       }
     }
+    await swiping;
     screen.fail("tennis_not_found", `facility 列表滑了 ${swipes} 次、${SHOW_TENNIS_MS / 1000} 秒内没找到 tennis court`);
   }
 
   const tennisRect = (y) => ({ x: CARD.x, y, width: CARD.width, height: screen.region("tennis-court").rect.height });
 
   // Tap the card at `y` and wait for the booking page. Returns the ms it took, or null.
+  // Tap the card at `y` until the booking page shows. A tap on a list still
+  // gliding only stops it: the card is then still there, a few pixels off,
+  // and is found again near where it was and tapped there (tapUntil).
+  // Returns the ms from the tap that worked to the page, or null.
   async function enterTennis(y, { timeoutMs = 8000, gap } = {}) {
-    await screen.tapRect(tennisRect(y), "tennis-court", { gap });
-    const tapped = now();
-    const page = await screen.waitFor(() => screen.is("tennis-page"), { timeoutMs });
-    return page ? now() - tapped : null;
+    const height = screen.region("tennis-court").rect.height;
+    let at = y;
+    let tapped = now();
+    const entered = await tapUntil("tennis-court", {
+      tap: async () => {
+        await screen.tapRect(tennisRect(at), "tennis-court", { gap });
+        tapped = now();
+      },
+      done: () => screen.is("tennis-page"),
+      still: async () => {
+        const [card] = await screen.scanY("tennis-court", { top: Math.max(LIST.top, at - 40), bottom: Math.min(LIST.bottom, at + height + 40) });
+        if (card) at = card.y;
+        return Boolean(card);
+      },
+      timeoutMs,
+    });
+    return entered ? now() - tapped : null;
   }
 
   // Tap the region `name` and wait for `next` to show, tapping again while

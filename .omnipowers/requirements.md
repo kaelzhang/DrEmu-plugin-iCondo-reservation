@@ -48,3 +48,5 @@
   - evidence: flow.js showTennis 认出 book 标签后立即扫 / 滑 / 再扫；tests/flow.test.js「swiped at once … (R23)」旧代码 2.1 s 红、新代码绿
 - R24 — 「请你 review 所有的失败重试策略，尽可能减少所有的延迟，能够以最少的时间达成目标。」 (stated 2026-10-01)
   - evidence: 点击无效改为「0.8 s 内纹丝不动即重点」（tapUntil / knownPage），覆盖 back、标签、日期、next、agree、cancel、yes；轮询 40 ms；where(expect)；输入间隔 100 ms；扫描 1/4 粗筛、让出次数 20+→约 5；tests/flow.test.js 五个被忽略点击用例旧代码 2.0–4.6 s 红、新代码 0.86–1.8 s 绿
+- R25 — 「我说过，这个列表页，你就应该直接一边滚动，一边 waitFor tennis-court，tennis-court 出现就立即停止滚动，并且点击」 (stated 2026-10-01)
+  - evidence: flow.js showTennis 滑动中持续扫描、看到即返回（滑动中则等手势结束再取位置）；enterTennis 用 tapUntil 并在原位置附近重新定位卡片；tests/flow.test.js「card the list swallowed」旧代码 8.0 s 红、新代码绿
