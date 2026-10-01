@@ -135,9 +135,11 @@ test("an ignored tap on the active tab is made again, and the list is only looke
   const routes = ROUTES();
   routes["facility-bottom"] = routes["facility-bottom"].map((r) => (r.to === "active" ? { ...r, ignore: 1 } : r));
   const { fake, flow } = run("facility-bottom", routes);
+  const started = Date.now();
   await flow.cancelBooking({ date: "2026-10-02", slots: [14] });
   assert.equal(fake.state.screen, "active");
   assert.deepEqual(fake.state.taps.map((t) => t.screen), ["facility-bottom", "facility-bottom", "active", "cancel-confirm-bottom"]);
+  assert.ok(Date.now() - started < 1500, `took ${Date.now() - started} ms`);
 });
 
 test("the cancel sheet is swiped up at once to reach yes, without waiting on its first screen", { skip, timeout: 30_000 }, async () => {
@@ -157,7 +159,7 @@ test("a yes tap the sheet swallowed (still gliding) is made again while yes is s
   await flow.cancelBooking({ date: "2026-10-02", slots: [14] });
   assert.equal(fake.state.screen, "active");
   assert.deepEqual(fake.state.taps.map((t) => t.screen), ["active", "cancel-confirm-bottom", "cancel-confirm-bottom"]);
-  assert.ok(Date.now() - started < 5000, `took ${Date.now() - started} ms`);
+  assert.ok(Date.now() - started < 1500, `took ${Date.now() - started} ms`);
 });
 
 test("a booking not on the active tab is not cancelled", { skip, timeout: 30_000 }, async () => {
@@ -187,7 +189,7 @@ test("a back tap the page ignored is tried again within seconds, and the page is
   await flow.toFacility("book");
   assert.equal(fake.state.screen, "facility-bottom");
   assert.deepEqual(fake.state.taps.map((t) => t.screen), ["book-success", "book-success"]);
-  assert.ok(Date.now() - started < 4000, `took ${Date.now() - started} ms`);
+  assert.ok(Date.now() - started < 1500, `took ${Date.now() - started} ms`);
 });
 
 test("an ignored tap on next or agree is made again; the booking goes through with one confirm", { skip, timeout: 30_000 }, async () => {
@@ -195,8 +197,10 @@ test("an ignored tap on next or agree is made again; the booking goes through wi
   routes["tennis-court-next"] = [{ on: "tap", rect: r(260, 1106, 207, 63), to: "agree", ignore: 1 }];
   routes.agree = [{ on: "tap", rect: r(10, 1111, 698, 51), to: "confirm", ignore: 1 }];
   const { fake, flow } = run("tennis-court-next", routes);
+  const started = Date.now();
   assert.deepEqual(await flow.bookHere({ date: "2026-10-02", slots: [14] }), { booked: true });
   assert.deepEqual(fake.state.taps.map((t) => t.screen), ["tennis-court-next", "tennis-court-next", "agree", "agree", "confirm"]);
+  assert.ok(Date.now() - started < 2500, `took ${Date.now() - started} ms`);
 });
 
 test("on the book tab the list is swiped at once and tennis court looked for right after (R23)", { skip, timeout: 30_000 }, async () => {
@@ -206,6 +210,23 @@ test("on the book tab the list is swiped at once and tennis court looked for rig
   assert.ok(Math.abs(y - 1031) <= 2, `y ${y}`);
   assert.equal(fake.state.swipes.length, 1);
   assert.ok(Date.now() - started < 1500, `took ${Date.now() - started} ms`);
+});
+
+test("an ignored tap on the day or on cancel is made again within a second", { skip, timeout: 30_000 }, async () => {
+  const routes = ROUTES();
+  routes["tennis-court"] = routes["tennis-court"].map((route) => (route.to === "tennis-court-next" && route.rect.y === 318 ? { ...route, ignore: 1 } : route));
+  const day = run("tennis-court", routes);
+  let started = Date.now();
+  assert.deepEqual(await day.flow.bookHere({ date: "2026-10-02", slots: [14] }), { booked: true });
+  assert.deepEqual(day.fake.state.taps.slice(0, 2).map((t) => t.screen), ["tennis-court", "tennis-court"]);
+  assert.ok(Date.now() - started < 2500, `day: ${Date.now() - started} ms`);
+
+  routes.active = routes.active.map((route) => (route.to === "cancel-confirm-top" ? { ...route, ignore: 1 } : route));
+  const sheet = run("active", routes);
+  started = Date.now();
+  await sheet.flow.cancelBooking({ date: "2026-10-02", slots: [14] });
+  assert.deepEqual(sheet.fake.state.taps.map((t) => t.screen), ["active", "active", "cancel-confirm-bottom"]);
+  assert.ok(Date.now() - started < 2500, `cancel: ${Date.now() - started} ms`);
 });
 
 test("iCondo leaving the front stops the flow", { skip }, async () => {

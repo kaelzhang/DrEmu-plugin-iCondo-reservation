@@ -23,8 +23,10 @@ const SHOW_TENNIS_MS = 15_000;
 // Finding yes in the cancel sheet: at most this many swipes, within this long.
 const MAX_SHEET_SWIPES = 5;
 const SHEET_MS = 10_000;
-// How long a navigation tap gets to move the screen before it is taken again.
-const LEAVE_MS = 2000;
+// A tap after which nothing on screen has moved for this long did nothing
+// (seen on the device when tapping a page still sliding in, or a list still
+// gliding); it is made again. Taps that work move something within ~0.2 s.
+const STILL_MS = 800;
 // The facility list scrolls between these; the tennis-court card is found in it.
 const LIST = { top: 300, bottom: 1180 };
 const LIST_SWIPE = { from: { x: 360, y: 1000 }, to: { x: 360, y: 450 } };
@@ -39,26 +41,42 @@ const twelve = (hour) => ((hour + 11) % 12) + 1;
 
 export function createFlow({ screen, device, log, now = Date.now }) {
   // ---- where are we ------------------------------------------------------
-  async function where() {
-    if (await screen.is("tennis-page")) return "tennis";
-    if (await screen.is("agree")) return "agree";
-    if (await screen.is("confirm")) return "confirm";
-    if (await screen.is("calendar")) return "success";
-    if (await screen.is("book-tab")) return "facility";
+  // Pages and how each is told; `expect` is looked for first (the page a
+  // tap is meant to lead to), so the usual answer costs one or two captures.
+  const PAGES = [
+    ["tennis", () => screen.is("tennis-page")],
+    ["agree", () => screen.is("agree")],
+    ["confirm", () => screen.is("confirm")],
+    ["success", () => screen.is("calendar")],
+    ["facility", () => screen.is("book-tab")],
     // The home page's facility icon looks like the facility page's book tab,
     // so home is told by its own logo as well.
-    if ((await screen.is("home")) && (await screen.is("facility"))) return "home";
+    ["home", async () => (await screen.is("home")) && (await screen.is("facility"))],
+  ];
+
+  async function where(expect = null) {
+    const first = PAGES.find(([page]) => page === expect);
+    for (const [page, shows] of first ? [first, ...PAGES.filter((p) => p !== first)] : PAGES) {
+      if (await shows()) return page;
+    }
     return "unknown";
   }
 
   // Wait for a page we know; "unknown" when none shows within `timeoutMs`.
-  // With `leaving`, that page does not count either: the tap that leaves it
-  // may not have moved anything yet.
-  async function knownPage({ timeoutMs = 4000, leaving = null } = {}) {
+  async function knownPage({ timeoutMs = 4000, leaving = null, expect = null } = {}) {
+    // A tap that left `leaving` shows a moving frame (no page) or the next
+    // page. `leaving` itself, unchanged for STILL_MS with nothing moving in
+    // between, means the tap did nothing: it is returned at once, so the
+    // caller taps again instead of waiting out the timeout.
+    const started = now();
+    let moved = false;
     const page = await screen.waitFor(async () => {
-      const seen = await where();
-      return seen === "unknown" || seen === leaving ? null : seen;
-    }, { timeoutMs, intervalMs: 150 });
+      const seen = await where(expect);
+      if (seen !== leaving) moved = true;
+      if (seen !== "unknown" && seen !== leaving) return seen;
+      if (leaving && seen === leaving && !moved && now() - started >= STILL_MS) return leaving;
+      return null;
+    }, { timeoutMs });
     return page ?? "unknown";
   }
 
@@ -96,26 +114,26 @@ export function createFlow({ screen, device, log, now = Date.now }) {
   // Tap a facility tab until it is on: a tap made while the page was still
   // sliding in is ignored, and tapping a tab again has no other effect.
   async function switchTab(tab, timeoutMs = 6000) {
-    const deadline = now() + timeoutMs;
-    while (now() < deadline) {
-      await screen.tapRegion(`${tab}-tab`);
-      if (await screen.waitForRegion(`${tab}-tab`, { image: "on", timeoutMs: Math.min(LEAVE_MS, Math.max(0, deadline - now())) })) return true;
-      log.debug("tap.again", { at: `${tab}-tab` });
-    }
-    return false;
+    return tapUntil(`${tab}-tab`, {
+      tap: () => screen.tapRegion(`${tab}-tab`),
+      done: () => screen.is(`${tab}-tab`, { image: "on" }),
+      still: () => screen.is(`${tab}-tab`, { image: "off" }),
+      timeoutMs,
+    });
   }
 
   // ---- getting to the facility page ---------------------------------------
   async function toFacility(tab = "book") {
-    // The page the last tap meant to leave; a tap the page ignored (it was
-    // still sliding in) shows as that page again within LEAVE_MS, and the
-    // step is simply taken again.
+    // The page the last tap meant to leave, and the page it should lead to;
+    // a tap the page ignored (it was still sliding in) shows as that page,
+    // unmoved, and the step is simply taken again.
     let leaving = null;
+    let expect = "facility";
     for (let step = 0; step < 10; step += 1) {
       await assertInFront();
       const started = now();
-      let page = leaving ? await knownPage({ leaving, timeoutMs: LEAVE_MS }) : "unknown";
-      if (page === "unknown") page = await knownPage({ timeoutMs: 4000 });
+      let page = leaving ? await knownPage({ leaving, expect, timeoutMs: 6000 }) : "unknown";
+      if (page === "unknown") page = await knownPage({ expect, timeoutMs: 4000 });
       if (leaving) log.debug("nav.arrived", { from: leaving, at: page, ms: now() - started });
       leaving = null;
       if (page === "facility") {
@@ -126,6 +144,7 @@ export function createFlow({ screen, device, log, now = Date.now }) {
       if (page === "home") await screen.tapRegion("facility");
       else await goBack(page);
       leaving = page;
+      expect = page === "home" ? "facility" : null;
     }
     screen.fail("facility_unreachable", "10 步之内没能回到 facility 页");
   }
@@ -159,27 +178,45 @@ export function createFlow({ screen, device, log, now = Date.now }) {
   async function enterTennis(y, { timeoutMs = 8000, gap } = {}) {
     await screen.tapRect(tennisRect(y), "tennis-court", { gap });
     const tapped = now();
-    const page = await screen.waitFor(() => screen.is("tennis-page"), { timeoutMs, intervalMs: 50 });
+    const page = await screen.waitFor(() => screen.is("tennis-page"), { timeoutMs });
     return page ? now() - tapped : null;
   }
 
-  // Tap the region `name` and wait for `next` to show; while it has not and
-  // `name` is still there after LEAVE_MS, the tap was ignored (the page was
-  // still sliding in): tap again. Only for taps with no side effect beyond
-  // moving on — never confirm, yes, or a cell (a second tap there would
-  // submit twice or undo the choice).
+  // Tap the region `name` and wait for `next` to show, tapping again while
+  // `name` sits unmoved (tapUntil). Only for taps with no side effect beyond
+  // moving on — never confirm or a cell (a second tap there would submit
+  // twice or undo the choice).
   async function tapThrough(name, next, { timeoutMs }) {
+    return tapUntil(name, {
+      tap: () => screen.tapRegion(name),
+      done: () => screen.is(next),
+      still: () => screen.is(name, name === "next" ? { image: "enabled" } : {}),
+      timeoutMs,
+    });
+  }
+
+  // Tap, then wait for `done()`. If instead `still()` — the thing tapped,
+  // unchanged where it was — holds for STILL_MS with nothing moving in
+  // between, the tap did nothing (the page was still sliding in or gliding):
+  // tap again at once. Once anything moved, only `done()` or the timeout ends
+  // the wait. True when done.
+  async function tapUntil(label, { tap, done, still, timeoutMs }) {
     const deadline = now() + timeoutMs;
-    for (;;) {
-      await screen.tapRegion(name);
-      const left = Math.max(0, deadline - now());
-      if (await screen.waitForRegion(next, { timeoutMs: Math.min(LEAVE_MS, left) })) return true;
-      if (now() >= deadline) return false;
-      if (!(await screen.is(name, name === "next" ? { image: "enabled" } : {}))) {
-        return Boolean(await screen.waitForRegion(next, { timeoutMs: Math.max(0, deadline - now()) }));
-      }
-      log.debug("tap.again", { at: name, waiting: next });
+    while (now() < deadline) {
+      await tap();
+      const tapped = now();
+      let moved = false;
+      const outcome = await screen.waitFor(async () => {
+        if (await done()) return "done";
+        if (!(await still())) moved = true;
+        else if (!moved && now() - tapped >= STILL_MS) return "still";
+        return null;
+      }, { timeoutMs: Math.max(0, deadline - now()) });
+      if (outcome === "done") return true;
+      if (outcome !== "still") return false;
+      log.debug("tap.again", { at: label, afterMs: now() - tapped });
     }
+    return false;
   }
 
   // ---- the booking page --------------------------------------------------
@@ -202,17 +239,21 @@ export function createFlow({ screen, device, log, now = Date.now }) {
     const cell = gridCellOf(task.date, today);
     if (!cell) screen.fail("date_off_grid", `${task.date} 不在今天（${today}）看到的两周里`);
     // The grid may still be loading: two equal reads in a row.
-    const day = await screen.waitFor(() => readDay(cell), { timeoutMs: LOADING_MS, intervalMs: 120, stable: 2 });
+    const day = await screen.waitFor(() => readDay(cell), { timeoutMs: LOADING_MS, stable: 2 });
     if (!day) screen.fail("day_unreadable", `读不出 ${task.date} 那一格的状态`);
     log.debug("book.day", { date: task.date, row: cell.row, col: cell.col, state: day });
     if (day === "closed") return { dayClosed: true };
     if (day === "open") {
-      await screen.tapRect(dayRect(cell), `day ${task.date}`);
-      if ((await screen.waitFor(async () => (await readDay(cell)) === "selected" || null, { timeoutMs: 3000, intervalMs: 120 })) === null) {
-        screen.fail("day_not_selected", `点了 ${task.date} 没有选中`);
-      }
+      // Choosing a day twice chooses it still: a tap that did nothing is made again.
+      const chosen = await tapUntil(`day ${task.date}`, {
+        tap: () => screen.tapRect(dayRect(cell), `day ${task.date}`),
+        done: async () => (await readDay(cell)) === "selected",
+        still: async () => (await readDay(cell)) === "open",
+        timeoutMs: 4000,
+      });
+      if (!chosen) screen.fail("day_not_selected", `点了 ${task.date} 没有选中`);
     }
-    const slots = await screen.waitFor(readSlots, { timeoutMs: LOADING_MS, intervalMs: 150, stable: 2 });
+    const slots = await screen.waitFor(readSlots, { timeoutMs: LOADING_MS, stable: 2 });
     if (!slots) screen.fail("slots_unreadable", "时段区域一直在变化，读不稳");
     const taken = task.slots.filter((hour) => slots[hour] === "closed");
     log.info("book.slots", { date: task.date, want: slotsLabel(task.slots), states: task.slots.map((h) => `${h}:${slots[h]}`).join(" ") });
@@ -220,7 +261,7 @@ export function createFlow({ screen, device, log, now = Date.now }) {
     for (const hour of task.slots) {
       if (slots[hour] === "selected") continue; // tapping a chosen slot would unchoose it
       await screen.tapRect(slotRect(hour), `slot ${hour}`);
-      const chosen = await screen.waitFor(async () => (await readSlots())[hour] === "selected" || null, { timeoutMs: 3000, intervalMs: 120 });
+      const chosen = await screen.waitFor(async () => (await readSlots())[hour] === "selected" || null, { timeoutMs: 3000 });
       if (!chosen) screen.fail("slot_not_selected", `点了 ${hour}:00 没有选中（可能刚被别人订走）`);
     }
     if (!(await screen.waitForRegion("next", { image: "enabled", timeoutMs: 5000 }))) screen.fail("next_not_lit", "选好时段后 next 没有亮起");
@@ -254,7 +295,7 @@ export function createFlow({ screen, device, log, now = Date.now }) {
       looks += 1;
       const found = await screen.scanY("cancel", LIST);
       return found.length ? found : null;
-    }, { timeoutMs: ACTIVE_LIST_MS, intervalMs: 300 })) ?? [];
+    }, { timeoutMs: ACTIVE_LIST_MS })) ?? [];
     log.debug("cancel.list", { found: cards.length, looks, ms: now() - started });
     let target = null;
     for (const { y } of cards) {
@@ -266,28 +307,36 @@ export function createFlow({ screen, device, log, now = Date.now }) {
       }
     }
     if (target === null) screen.fail("cancel_not_found", `active 页里没找到 ${task.date} ${slotsLabel(task.slots)} 的可取消预订（${Math.round((now() - started) / 1000)} 秒内看了 ${looks} 次，找到 ${cards.length} 个 cancel）`);
-    await screen.tapRect({ ...screen.region("cancel").rect, y: target }, "cancel");
+    // The sheet covers the button as it slides up; a button still in place,
+    // unmoved, means the tap did nothing and it is made again.
+    const cancelRect = { ...screen.region("cancel").rect, y: target };
+    const still = () => screen.is("cancel", { dy: target - screen.region("cancel").rect.y });
+    if (!(await tapUntil("cancel", { tap: () => screen.tapRect(cancelRect, "cancel"), done: async () => !(await still()), still, timeoutMs: 6000 }))) {
+      screen.fail("cancel_sheet_missing", "点了 cancel 没有弹出取消确认");
+    }
     // The sheet slides up from the bottom; yes sits below its first screen.
     // Look, and swipe up at once when it is not there (as for the list). A
     // tap on a sheet still gliding only stops it, so yes is tapped once a
-    // second look finds it in the same place; and tapped again while it is
-    // still there after LEAVE_MS (a tap that worked closes the sheet, so a
-    // yes still in place means the tap did nothing).
+    // second look finds it in the same place; and tapped again while it sits
+    // unmoved (a tap that worked closes the sheet).
     const deadline = now() + SHEET_MS;
     let swipes = 0;
     let last = null;
     while (now() < deadline) {
       const [yes] = await screen.scanY("cancel-yes", { top: 500, bottom: 1180 });
       if (yes && last !== null && Math.abs(yes.y - last) <= 2) {
-        await screen.tapRect({ ...screen.region("cancel-yes").rect, y: yes.y }, "cancel-yes");
-        const back = await screen.waitFor(async () => (await facilityTab()) === "active" || null, { timeoutMs: LEAVE_MS, intervalMs: 200 });
-        if (back) {
+        const rect = { ...screen.region("cancel-yes").rect, y: yes.y };
+        const closed = await tapUntil("cancel-yes", {
+          tap: () => screen.tapRect(rect, "cancel-yes"),
+          done: async () => (await facilityTab()) === "active",
+          still: () => screen.is("cancel-yes", { dy: yes.y - screen.region("cancel-yes").rect.y }),
+          timeoutMs: Math.max(0, deadline - now()),
+        });
+        if (closed) {
           log.info("cancel.success", { date: task.date, slots: slotsLabel(task.slots) });
           return;
         }
-        log.debug("tap.again", { at: "cancel-yes" });
-        last = null;
-        continue;
+        break;
       }
       last = yes ? yes.y : null;
       if (!yes && swipes < MAX_SHEET_SWIPES) {

@@ -46,3 +46,5 @@
   - evidence: plugin/core 中不再有「延时后判断」：剩余的 sleep / wait 只用于等到某时刻、30 秒保活、让出执行权、点击间隔、waitFor 轮询；docs/FLOW.md 记录规则
 - R23 — 「你只要看到 book-tab 了，你就可以尝试 swipe up 了，并且立即开始尝试检查 tennis-court 是否出现，因为哪怕列表还没有完全 ready，你也是可以尝试滚动的」 (stated 2026-10-01)
   - evidence: flow.js showTennis 认出 book 标签后立即扫 / 滑 / 再扫；tests/flow.test.js「swiped at once … (R23)」旧代码 2.1 s 红、新代码绿
+- R24 — 「请你 review 所有的失败重试策略，尽可能减少所有的延迟，能够以最少的时间达成目标。」 (stated 2026-10-01)
+  - evidence: 点击无效改为「0.8 s 内纹丝不动即重点」（tapUntil / knownPage），覆盖 back、标签、日期、next、agree、cancel、yes；轮询 40 ms；where(expect)；输入间隔 100 ms；扫描 1/4 粗筛、让出次数 20+→约 5；tests/flow.test.js 五个被忽略点击用例旧代码 2.0–4.6 s 红、新代码 0.86–1.8 s 绿

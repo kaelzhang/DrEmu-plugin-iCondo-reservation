@@ -29,7 +29,7 @@ function meanColour({ bgra, width, height }) {
   return { r: r / n, g: g / n, b: b / n };
 }
 
-export function createScreen({ device, assets, signal, log, random = Math.random, gapMs = 250, now = Date.now }) {
+export function createScreen({ device, assets, signal, log, random = Math.random, gapMs = 100, now = Date.now }) {
   let lastInputAt = -Infinity;
 
   function region(name) {
@@ -92,9 +92,10 @@ export function createScreen({ device, assets, signal, log, random = Math.random
     },
 
     // Wait until `check()` returns a truthy value `stable` times in a row
-    // (the same value each time), polling every `intervalMs`. Returns the
+    // (the same value each time), polling every `intervalMs` — kept short:
+    // a check is a capture and a compare, tens of ms already. Returns the
     // value, or null when `timeoutMs` ran out.
-    async waitFor(check, { timeoutMs, intervalMs = 150, stable = 1 }) {
+    async waitFor(check, { timeoutMs, intervalMs = 40, stable = 1 }) {
       const deadline = now() + timeoutMs;
       let last = null;
       let streak = 0;
@@ -113,13 +114,13 @@ export function createScreen({ device, assets, signal, log, random = Math.random
     // Wait for a region's template to appear; seen once, it counts as there
     // until it falls under STAY (dialogs animate: 1.000 then 0.79).
     // With `image`, it must look more like that than like the region's other templates.
-    async waitForRegion(name, { timeoutMs, image, stable = 1 }) {
+    async waitForRegion(name, { timeoutMs, image, stable = 1, intervalMs = 40 }) {
       let seen = false;
       return screen.waitFor(async () => {
         const best = await score(name);
         seen = best.score >= (seen ? STAY : MATCH) && (!image || best.image === image);
         return seen ? best.image : null;
-      }, { timeoutMs, stable });
+      }, { timeoutMs, stable, intervalMs });
     },
 
     async tapAt(point, label, { gap } = {}) {
@@ -145,9 +146,9 @@ export function createScreen({ device, assets, signal, log, random = Math.random
 
     // Find the region's template going down a column: the region's own x and
     // width, any y in [top, bottom). Returns every place it is, top first:
-    // [{ y, score }]. A coarse pass over a half-size picture (mean absolute
-    // difference, cheap) proposes places; SSIM at full size around each
-    // proposal decides. Yields between rows so a long scan never holds the
+    // [{ y, score }]. A coarse pass over a quarter-size picture (mean
+    // absolute difference, cheap) proposes places; SSIM at full size around
+    // each proposal decides. Yields between rows so a long scan never holds the
     // engine for one long turn.
     async scanY(name, { top, bottom, threshold = MATCH }) {
       const { rect, images } = region(name);
@@ -156,24 +157,25 @@ export function createScreen({ device, assets, signal, log, random = Math.random
       const area = { x: rect.x, y: top, width: rect.width, height: bottom - top };
       const shot = await capture(area);
       const gray = bgraToGray(shot.bgra, shot.width, shot.height);
-      const half = (pixels, w, h) => {
-        const hw = w >> 1, hh = h >> 1, out = new Float32Array(hw * hh);
-        for (let y = 0; y < hh; y += 1) for (let x = 0; x < hw; x += 1) {
-          const i = 2 * y * w + 2 * x;
-          out[y * hw + x] = (pixels[i] + pixels[i + 1] + pixels[i + w] + pixels[i + w + 1]) / 4;
+      const quarter = (pixels, w, h) => {
+        const qw = w >> 2, qh = h >> 2, out = new Float32Array(qw * qh);
+        for (let y = 0; y < qh; y += 1) for (let x = 0; x < qw; x += 1) {
+          let sum = 0;
+          for (let j = 0; j < 4; j += 1) for (let i = 0, k = (4 * y + j) * w + 4 * x; i < 4; i += 1) sum += pixels[k + i];
+          out[y * qw + x] = sum / 16;
         }
-        return { pixels: out, width: hw, height: hh };
+        return { pixels: out, width: qw, height: qh };
       };
-      const small = half(gray, area.width, area.height);
-      const tsmall = half(template.gray, template.width, template.height);
+      const small = quarter(gray, area.width, area.height);
+      const tsmall = quarter(template.gray, template.width, template.height);
       const proposals = [];
       for (let y = 0; y + tsmall.height <= small.height; y += 1) {
         let sum = 0;
         for (let j = 0; j < tsmall.height; j += 1) {
           for (let i = 0; i < tsmall.width; i += 1) sum += Math.abs(small.pixels[(y + j) * small.width + i] - tsmall.pixels[j * tsmall.width + i]);
         }
-        proposals.push({ y: y * 2, mad: sum / (tsmall.width * tsmall.height) });
-        if (y % 32 === 31) await yieldTurn();
+        proposals.push({ y: y * 4, mad: sum / (tsmall.width * tsmall.height) });
+        if (y % 64 === 63) await yieldTurn(); // a turn of the engine stays short
       }
       // The few places that differ least, a template height apart: a mostly
       // blank template (cancel) differs little from any blank stretch too, and
@@ -185,9 +187,9 @@ export function createScreen({ device, assets, signal, log, random = Math.random
       }
       const found = [];
       let checked = 0;
-      for (const { y } of proposed) {
+      for (const [index, { y }] of proposed.entries()) {
         let best = { y: -1, score: -1 };
-        for (let dy = -2; dy <= 2; dy += 1) {
+        for (let dy = -3; dy <= 3; dy += 1) {
           const yy = y + dy;
           if (yy < 0 || yy + template.height > area.height) continue;
           const window = gray.subarray(yy * area.width, (yy + template.height) * area.width);
@@ -196,7 +198,7 @@ export function createScreen({ device, assets, signal, log, random = Math.random
           if (s > best.score) best = { y: top + yy, score: s };
         }
         if (best.score >= threshold && !found.some((f) => Math.abs(f.y - best.y) < template.height / 2)) found.push(best);
-        await yieldTurn();
+        if (index % 3 === 2) await yieldTurn();
       }
       log.debug("scan", { name, proposed: proposed.length, checked, found: found.length, ms: now() - started });
       return found.sort((a, b) => a.y - b.y);
